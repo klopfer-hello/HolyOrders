@@ -9,3 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Project scaffold.
+- Blessing data with runtime spellbook resolution (locale-safe, no rank tables).
+- Own talent scanning (improvement ranks via icon matching, spec summary).
+- Roster scanning: party/raid, pets with owner mapping, subgroups, MAINTANK roles.
+- Debug commands: `/ho spells`, `/ho roster`.

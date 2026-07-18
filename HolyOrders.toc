@@ -10,3 +10,4 @@ HolyOrders.lua
 Data.lua
 Talents.lua
 Roster.lua
+Commands.lua

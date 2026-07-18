@@ -8,3 +8,4 @@
 
 HolyOrders.lua
 Data.lua
+Talents.lua

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-19
+
+### Added
+- No-Salvation mode state is synced: every client's "No Salv" button shows
+  the active state, and any lead can revert — the paladin holding the
+  snapshot restores the exact pre-encounter plan and broadcasts it.
+
 ## [0.6.1] - 2026-07-19
 
 ### Fixed

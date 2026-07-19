@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-19
+
+### Added
+- Range-aware rotation: out-of-range members no longer block the cast
+  rotation — they are skipped (and shown in the tooltip) until they come
+  close. Greater blessings pick a nearby anchor, which covers distant class
+  members anyway.
+
 ## [0.7.0] - 2026-07-19
 
 ### Added

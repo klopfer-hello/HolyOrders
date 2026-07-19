@@ -142,16 +142,41 @@ local function FormatShort(seconds)
 	return string.format("%ds", math.floor(seconds))
 end
 
+-- colour the button's status border (nil = hide it): green all covered, red
+-- someone in range missing, amber only-expiring or only-out-of-range
+local function SetButtonBorder(btn, r, g, b)
+	if not btn.borders then
+		return
+	end
+	for _, tex in pairs(btn.borders) do
+		if r then
+			tex:SetColorTexture(r, g, b, 0.9)
+			tex:Show()
+		else
+			tex:Hide()
+		end
+	end
+end
+
 -- button visuals that are safe to update in combat
 local function UpdateButtonTexts(btn, task)
 	btn.count:SetText(task.missing > 0 and tostring(task.missing) or "")
 	btn.timer:SetText(FormatShort(task.minRemaining))
-	if task.missing > 0 then
+	-- in-range missing counts toward "red"; a purely out-of-range gap is amber,
+	-- since it is not something you can act on right now
+	local inRangeMissing = task.missing - (task.outOfRange or 0)
+	if task.noneAssigned then
+		btn.bg:SetColorTexture(0, 0, 0, 0.65)
+		SetButtonBorder(btn) -- no assignment: no status
+	elseif inRangeMissing > 0 then
 		btn.bg:SetColorTexture(0.55, 0.10, 0.10, 0.85)
-	elseif task.expiring > 0 then
+		SetButtonBorder(btn, 0.85, 0.15, 0.15) -- red
+	elseif task.expiring > 0 or (task.outOfRange or 0) > 0 then
 		btn.bg:SetColorTexture(0.55, 0.45, 0.05, 0.85)
+		SetButtonBorder(btn, 0.90, 0.70, 0.10) -- amber
 	else
 		btn.bg:SetColorTexture(0, 0, 0, 0.65)
+		SetButtonBorder(btn, 0.10, 0.80, 0.10) -- green: everyone covered
 	end
 end
 
@@ -575,6 +600,28 @@ local function CreateButton(index)
 	btn.classIcon:SetSize(15, 15)
 	btn.classIcon:SetPoint("TOPLEFT", -5, 5)
 	btn.classIcon:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
+
+	-- status border: green = everyone covered, red = someone missing, amber =
+	-- expiring/out of range. Four thin edges, recoloured per refresh (texture
+	-- ops only, so it is safe to update in combat)
+	btn.borders = {}
+	local bt = btn:CreateTexture(nil, "OVERLAY")
+	bt:SetPoint("TOPLEFT", -1, 1)
+	bt:SetPoint("TOPRIGHT", 1, 1)
+	bt:SetHeight(2)
+	local bb = btn:CreateTexture(nil, "OVERLAY")
+	bb:SetPoint("BOTTOMLEFT", -1, -1)
+	bb:SetPoint("BOTTOMRIGHT", 1, -1)
+	bb:SetHeight(2)
+	local bl = btn:CreateTexture(nil, "OVERLAY")
+	bl:SetPoint("TOPLEFT", -1, 1)
+	bl:SetPoint("BOTTOMLEFT", -1, -1)
+	bl:SetWidth(2)
+	local br = btn:CreateTexture(nil, "OVERLAY")
+	br:SetPoint("TOPRIGHT", 1, 1)
+	br:SetPoint("BOTTOMRIGHT", 1, -1)
+	br:SetWidth(2)
+	btn.borders.top, btn.borders.bottom, btn.borders.left, btn.borders.right = bt, bb, bl, br
 
 	btn.count = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	btn.count:SetPoint("BOTTOMRIGHT", -1, 1)

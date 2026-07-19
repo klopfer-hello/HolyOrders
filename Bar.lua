@@ -149,7 +149,11 @@ function Bar.Create()
 	end)
 	handle:SetScript("OnMouseUp", function(_, mouseButton)
 		if mouseButton == "RightButton" then
-			Bar.ToggleForceRebuff()
+			if IsShiftKeyDown() then
+				HO.Window.Toggle()
+			else
+				Bar.ToggleForceRebuff()
+			end
 		end
 	end)
 	handle:SetScript("OnEnter", function(self)
@@ -157,6 +161,7 @@ function Bar.Create()
 		GameTooltip:SetText("HolyOrders")
 		GameTooltip:AddLine(BarOptions().locked and "locked — /ho bar unlock" or "drag to move — /ho bar lock", 1, 1, 1)
 		GameTooltip:AddLine("right-click: force rebuff (pre-pull refresh)", 1, 1, 1)
+		GameTooltip:AddLine("shift-right-click: assignment window", 1, 1, 1)
 		GameTooltip:Show()
 	end)
 	handle:SetScript("OnLeave", function()

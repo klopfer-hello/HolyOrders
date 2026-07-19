@@ -17,8 +17,14 @@ local MAX_BUTTONS = 9
 -- handle "gem node" sprite: a golden rail with a faceted gem knob. The gem
 -- colour is the status light — a red-gem variant is swapped in while a force
 -- rebuff is active. Bundled TGA, referenced without extension.
-local HANDLE_TEX = "Interface\\AddOns\\HolyOrders\\Icons\\GemHandle"
-local HANDLE_TEX_ACTIVE = "Interface\\AddOns\\HolyOrders\\Icons\\GemHandleActive"
+-- gem variants: the handle gem is an overall status light — blue at rest / no
+-- duties, green when everything is covered, yellow when a class needs attention
+-- (unmet request or expiring/out of range), red when a buff is missing or a
+-- force rebuff is active.
+local HANDLE_TEX = "Interface\\AddOns\\HolyOrders\\Icons\\GemHandle" -- blue
+local HANDLE_TEX_ACTIVE = "Interface\\AddOns\\HolyOrders\\Icons\\GemHandleActive" -- red
+local HANDLE_TEX_GREEN = "Interface\\AddOns\\HolyOrders\\Icons\\GemHandleGreen"
+local HANDLE_TEX_YELLOW = "Interface\\AddOns\\HolyOrders\\Icons\\GemHandleYellow"
 
 -- rounded-button textures: a tintable frame ring and a corner mask (bundled TGA)
 local BTN_MASK = "Interface\\AddOns\\HolyOrders\\Icons\\ButtonMask"
@@ -180,10 +186,53 @@ local function ClassHasUnmetRequest(classToken)
 	return false
 end
 
+-- one class duty's status: "red" (someone in range is missing), "yellow" (a
+-- request, or expiring/out of range), or "green" (all covered)
+local function TaskSeverity(task)
+	if task.noneAssigned then
+		return ClassHasUnmetRequest(task.classToken) and "yellow" or "green"
+	end
+	local inRangeMissing = task.missing - (task.outOfRange or 0)
+	if inRangeMissing > 0 then
+		return "red"
+	end
+	if ClassHasUnmetRequest(task.classToken) then
+		return "yellow"
+	end
+	if task.expiring > 0 or (task.outOfRange or 0) > 0 then
+		return "yellow"
+	end
+	return "green"
+end
+
+-- worst status across all class duties, feeding the handle gem status light
+-- (nil when there are no duties at all)
+local function BarStatus()
+	local worst
+	for _, task in pairs(HO.Engine.tasks) do
+		local s = TaskSeverity(task)
+		if s == "red" then
+			return "red"
+		elseif s == "yellow" then
+			worst = "yellow"
+		elseif not worst then
+			worst = "green"
+		end
+	end
+	return worst
+end
+
 -- button visuals that are safe to update in combat
 local function UpdateButtonTexts(btn, task)
 	btn.count:SetText(task.missing > 0 and tostring(task.missing) or "")
 	btn.timer:SetText(FormatShort(task.minRemaining))
+	-- during a force rebuff every duty icon is red-bordered, so the whole bar
+	-- reads as "rebuffing now" (matching the red handle gem)
+	if HO.Engine.ForceActive() then
+		btn.bg:SetVertexColor(0.55, 0.10, 0.10, 0.85)
+		SetButtonBorder(btn, 0.85, 0.15, 0.15)
+		return
+	end
 	-- in-range missing counts toward "red"; a purely out-of-range gap is amber,
 	-- since it is not something you can act on right now
 	local inRangeMissing = task.missing - (task.outOfRange or 0)
@@ -957,11 +1006,20 @@ function Bar.Refresh()
 	end
 	HO.Engine.Update()
 	if handle then
+		local tex = HANDLE_TEX -- blue: no duties
 		if HO.Engine.ForceActive() then
-			handle.tex:SetTexture(HANDLE_TEX_ACTIVE) -- red gem: rebuff active
+			tex = HANDLE_TEX_ACTIVE -- red: rebuffing
 		else
-			handle.tex:SetTexture(HANDLE_TEX) -- blue gem at rest
+			local worst = BarStatus()
+			if worst == "red" then
+				tex = HANDLE_TEX_ACTIVE
+			elseif worst == "yellow" then
+				tex = HANDLE_TEX_YELLOW
+			elseif worst == "green" then
+				tex = HANDLE_TEX_GREEN
+			end
 		end
+		handle.tex:SetTexture(tex)
 	end
 
 	if InCombatLockdown() then

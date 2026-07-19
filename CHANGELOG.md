@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-19
+
+### Added
+- Minimap button (drag to move; click: window, right-click: force rebuff,
+  shift-click: options).
+- Options panel (`/ho opt` or shift-click the minimap button): cast bar
+  visibility/lock, open edit, pet buffing (hunter/warlock toggles and pet
+  blessing choice), minimap button, debug trace.
+- Inspect-based spec inference: empty spec tags are filled automatically by
+  inspecting members in range (manual tags always win).
+- `/ho report`: announce missing blessings to the group.
+
+### Changed
+- Pets are buffed with the configured pet blessing (default Might) by the
+  paladin covering their base class; warlock pets are opt-in.
+
 ## [0.5.0] - 2026-07-19
 
 ### Added

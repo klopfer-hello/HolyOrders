@@ -84,6 +84,39 @@ local function Score(pallyName, blessingID)
 	return 0
 end
 
+-- substitute for a Salvation class assignment while no-Salvation mode is on:
+-- class preference first, then Light/Kings/Wisdom/Might, skipping blessings
+-- the class already receives from another paladin
+function Planner.SalvSubstitute(pally, classToken, plan)
+	local received = {}
+	for otherPally, rows in pairs(plan.class) do
+		if otherPally ~= pally then
+			local a = rows[classToken]
+			if a then
+				received[a.id] = true
+			end
+		end
+	end
+	local prefs = HO.db.prefs[classToken] or DEFAULT_PREFS[classToken]
+	local candidates = {}
+	if prefs and prefs.default then
+		for _, id in ipairs(prefs.default) do
+			table.insert(candidates, id)
+		end
+	end
+	table.insert(candidates, LIGHT)
+	table.insert(candidates, KINGS)
+	table.insert(candidates, WISDOM)
+	table.insert(candidates, MIGHT)
+	for _, id in ipairs(candidates) do
+		if id ~= SALVATION and not received[id]
+			and HO.Data.IsEligible(classToken, id, false) and Available(pally, id) then
+			return id
+		end
+	end
+	return nil
+end
+
 -- helpers ---------------------------------------------------------------------
 
 local function IsTankEntry(plan, entry)

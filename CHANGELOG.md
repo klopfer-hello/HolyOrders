@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- No-Salvation encounter mode (`/ho nosalv` or the window's "No Salv" button):
+  swaps every Salvation assignment for a substitute blessing and restores the
+  exact previous plan when toggled off; broadcast raid-wide by leads.
+
 ## [0.1.0] - 2026-07-19
 
 First shareable pre-release: full solo workflow plus multi-paladin sync.

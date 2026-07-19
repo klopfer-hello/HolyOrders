@@ -124,6 +124,60 @@ function Plan.ToggleTank(name)
 	return flagged
 end
 
+-- temporary no-Salvation mode -------------------------------------------------
+-- For encounters with random aggro: swaps every Salvation assignment for a
+-- substitute and remembers the previous plan; disabling restores it exactly.
+
+local SALVATION = 4
+
+function Plan.NoSalvationActive()
+	return HO.db.salvSnapshot ~= nil
+end
+
+function Plan.SetNoSalvation(enable)
+	if enable then
+		if HO.db.salvSnapshot then
+			return false, "already active"
+		end
+		HO.db.salvSnapshot = Copy(Plan.Active())
+		local plan = Plan.Active()
+		local changed = 0
+		for pally, rows in pairs(plan.class) do
+			for classToken, a in pairs(rows) do
+				if a.id == SALVATION then
+					local sub = HO.Planner.SalvSubstitute(pally, classToken, plan)
+					if sub then
+						a.id = sub
+					else
+						rows[classToken] = nil
+					end
+					changed = changed + 1
+				end
+			end
+		end
+		for _, targets in pairs(plan.player) do
+			for target, id in pairs(targets) do
+				if id == SALVATION then
+					targets[target] = nil
+					changed = changed + 1
+				end
+			end
+		end
+		HO.Log("plan", "no-salvation enabled, " .. changed .. " swapped")
+		return true, changed
+	end
+	if not HO.db.salvSnapshot then
+		return false, "not active"
+	end
+	local restored = HO.db.salvSnapshot
+	-- keep revisions monotonic so the restore propagates over the swap
+	restored.rev = Copy(Plan.Active().rev or {})
+	HO.db.activePlan = restored
+	HO.db.salvSnapshot = nil
+	HO.Log("plan", "no-salvation reverted")
+	return true
+end
+
 -- storage --------------------------------------------------------------------
 
 local function CountStored()

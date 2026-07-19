@@ -265,6 +265,9 @@ function Window.Create()
 		local sig = HO.Plan.Save()
 		HO.Print(sig and ("plan saved for roster: " .. sig) or "cannot save: no paladins in roster")
 	end, "Save the current plan for this paladin roster")
+	win.salvBtn = HeaderButton("No Salv", -222, function()
+		HO.commands["nosalv"]("")
+	end, "Encounter toggle: swap Salvation for substitutes, click again to restore the previous plan (lead/assist)")
 
 	win.colHeader = {}
 	win.hint = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -283,6 +286,10 @@ function Window.Refresh()
 	local plan = HO.Plan.Active()
 	local pallys = HO.Roster.Paladins()
 	local numCols = math.min(#pallys, MAX_COLS)
+
+	if win.salvBtn then
+		win.salvBtn:SetText(HO.Plan.NoSalvationActive() and "|cffff4040Salv OFF|r" or "No Salv")
+	end
 
 	-- column headers (paladin short names, vertical position under header)
 	for c = 1, numCols do
@@ -420,7 +427,7 @@ function Window.Refresh()
 		memberRows[i]:Hide()
 	end
 
-	win:SetSize(math.max(NAME_W + numCols * COL_W + PAD, 460), y + 38)
+	win:SetSize(math.max(NAME_W + numCols * COL_W + PAD, 520), y + 38)
 end
 
 function Window.Toggle()

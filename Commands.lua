@@ -292,6 +292,31 @@ HO.commands["ping"] = function()
 	HO.Comm.Ping()
 end
 
+-- encounter toggle: swap Salvation out, revert afterwards
+HO.commands["nosalv"] = function()
+	local myself = HO.FullName("player")
+	if IsInGroup() and HO.Comm and not HO.Comm.CanBulk(myself) then
+		HO.Print("no-Salvation mode changes every paladin's assignments — lead or assist only")
+		return
+	end
+	if HO.Plan.NoSalvationActive() then
+		HO.Plan.SetNoSalvation(false)
+		HO.Print("Salvation restored — plan reverted to the pre-encounter state")
+	else
+		local ok, changed = HO.Plan.SetNoSalvation(true)
+		if not ok then
+			HO.Print("no-Salvation mode: " .. tostring(changed))
+			return
+		end
+		HO.Print("no-Salvation mode ON: " .. changed .. " assignment(s) swapped — '/ho nosalv' reverts")
+	end
+	if HO.Comm and HO.Comm.SendPlanApply() then
+		HO.Print("plan broadcast to the group")
+	end
+	HO.Window.Refresh()
+	HO.Bar.Refresh()
+end
+
 -- auto-planner ----------------------------------------------------------------
 
 HO.commands["auto"] = function()

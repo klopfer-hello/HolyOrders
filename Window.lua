@@ -18,7 +18,7 @@ local PAD = 8
 local MAX_COLS = 8
 
 local CLASS_ORDER = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
-local MODE_TAG = { auto = "a", greater = "G", normal = "n" }
+local MODE_TAG = { auto = "|cff9d9d9da|r", greater = "|cffffd100G|r", normal = "|cffffffffn|r" }
 local EMPTY_SLOT = "Interface\\PaperDoll\\UI-Backpack-EmptySlot"
 
 local win
@@ -111,12 +111,24 @@ local function CellTooltip(cell)
 		local plan = HO.Plan.Active()
 		local cur = plan.class[cell.pally] and plan.class[cell.pally][cell.classToken]
 		if cur then
-			GameTooltip:AddLine(cell.pally .. ": " .. BlessingName(cur.id) .. " (" .. cur.mode .. ")", 1, 1, 1)
+			GameTooltip:AddLine(cell.pally .. ": " .. BlessingName(cur.id), 1, 1, 1)
+			local n = cell.memberCount or 0
+			if cur.mode == "auto" then
+				local effective = (n >= 2)
+					and "greater (30 min, whole class, 1 Symbol of Kings)"
+					or "10-min singles (too few members for greater)"
+				GameTooltip:AddLine("mode: auto — greater from 2+ members, singles otherwise", 0.9, 0.9, 0.9, true)
+				GameTooltip:AddLine("with " .. n .. " member" .. (n == 1 and "" or "s") .. " now: " .. effective, 0.6, 1, 0.6, true)
+			elseif cur.mode == "greater" then
+				GameTooltip:AddLine("mode: greater — always the Greater Blessing: 30 min, hits the whole class, costs a Symbol of Kings per cast", 0.9, 0.9, 0.9, true)
+			else
+				GameTooltip:AddLine("mode: normal — always 10-min single blessings on each member, no reagent", 0.9, 0.9, 0.9, true)
+			end
 		else
 			GameTooltip:AddLine(cell.pally .. ": no assignment", 1, 1, 1)
 		end
 		GameTooltip:AddLine("click: next blessing — right-click: clear", 0.8, 0.8, 0.8)
-		GameTooltip:AddLine("shift-click: cast mode (auto/greater/normal)", 0.8, 0.8, 0.8)
+		GameTooltip:AddLine("shift-click: change the cast mode", 0.8, 0.8, 0.8)
 	end
 	GameTooltip:Show()
 end
@@ -236,7 +248,9 @@ function Window.Create()
 	win.colHeader = {}
 	win.hint = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	win.hint:SetPoint("BOTTOMLEFT", 10, 6)
-	win.hint:SetText("click: blessing — right-click: clear — shift-click: mode — click class: members")
+	win.hint:SetJustifyH("LEFT")
+	win.hint:SetText("click: blessing — right-click: clear — shift-click: mode — click class: members\n"
+		.. "mode: |cff9d9d9da|r auto (greater from 2+ members) — |cffffd100G|r always greater (symbol) — |cffffffffn|r always 10-min singles")
 end
 
 -- layout ----------------------------------------------------------------------
@@ -300,6 +314,7 @@ function Window.Refresh()
 			for c = 1, numCols do
 				local cell = RowCell(row, c, ClassCellClick)
 				cell.pally, cell.classToken, cell.memberName = pallys[c], classToken, nil
+				cell.memberCount = #list
 				local cur = plan.class[pallys[c]] and plan.class[pallys[c]][classToken]
 				if cur then
 					cell.icon:SetTexture(HO.Data.blessings[cur.id] and HO.Data.blessings[cur.id].icon or EMPTY_SLOT)
@@ -384,7 +399,7 @@ function Window.Refresh()
 		memberRows[i]:Hide()
 	end
 
-	win:SetSize(math.max(NAME_W + numCols * COL_W + PAD, 380), y + 24)
+	win:SetSize(math.max(NAME_W + numCols * COL_W + PAD, 460), y + 38)
 end
 
 function Window.Toggle()

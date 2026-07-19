@@ -27,6 +27,10 @@ local CLASS_ORDER = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN
 local MODE_TAG = { auto = "|cff9d9d9da|r", greater = "|cffffd100G|r", normal = "|cffffffffn|r" }
 local EMPTY_SLOT = "Interface\\PaperDoll\\UI-Backpack-EmptySlot"
 local NONE_ICON = "Interface\\Buttons\\UI-GroupLoot-Pass-Up" -- explicit-none marker (matches the bar)
+-- rounded-cell textures (mirrors the cast bar): a corner mask and a tintable
+-- frame ring (bundled TGA, referenced without extension)
+local WIN_BTN_MASK = "Interface\\AddOns\\HolyOrders\\Icons\\ButtonMask"
+local WIN_BTN_FRAME = "Interface\\AddOns\\HolyOrders\\Icons\\ButtonFrame"
 
 local win
 local expanded = {} -- [classToken] = true
@@ -298,7 +302,14 @@ local function CreateCell(parent)
 	cell.icon = cell:CreateTexture(nil, "ARTWORK")
 	cell.icon:SetPoint("CENTER")
 	cell.icon:SetSize(ROW_H - 8, ROW_H - 8)
-	cell.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+	cell.icon:SetMask(WIN_BTN_MASK) -- rounded icon corners
+	-- static neutral rounded frame around the icon; the window is an editor, so
+	-- there is no green/red status colour on cells (mirrors the bar's neutral gold)
+	cell.frame = cell:CreateTexture(nil, "OVERLAY", nil, 1)
+	cell.frame:SetPoint("TOPLEFT", cell.icon, "TOPLEFT", -1, 1)
+	cell.frame:SetPoint("BOTTOMRIGHT", cell.icon, "BOTTOMRIGHT", 1, -1)
+	cell.frame:SetTexture(WIN_BTN_FRAME)
+	cell.frame:SetVertexColor(0.5, 0.42, 0.22, 0.7)
 	cell.mode = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	cell.mode:SetPoint("BOTTOMRIGHT", -1, 1)
 	cell:SetScript("OnEnter", CellTooltip)
@@ -407,7 +418,13 @@ local function AuraRowCell(row, colIndex)
 		cell.icon = cell:CreateTexture(nil, "ARTWORK")
 		cell.icon:SetPoint("CENTER")
 		cell.icon:SetSize(ROW_H - 8, ROW_H - 8)
-		cell.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+		cell.icon:SetMask(WIN_BTN_MASK) -- rounded icon corners
+		-- static neutral rounded frame around the icon (editor: no status colour)
+		cell.frame = cell:CreateTexture(nil, "OVERLAY", nil, 1)
+		cell.frame:SetPoint("TOPLEFT", cell.icon, "TOPLEFT", -1, 1)
+		cell.frame:SetPoint("BOTTOMRIGHT", cell.icon, "BOTTOMRIGHT", 1, -1)
+		cell.frame:SetTexture(WIN_BTN_FRAME)
+		cell.frame:SetVertexColor(0.5, 0.42, 0.22, 0.7)
 		cell:SetScript("OnEnter", AuraCellTooltip)
 		cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		cell:SetScript("OnClick", AuraCellClick)

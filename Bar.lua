@@ -189,8 +189,10 @@ local function UpdateButtonTexts(btn, task)
 	local inRangeMissing = task.missing - (task.outOfRange or 0)
 	-- yellow marker: any class member wants a buff this paladin isn't giving them
 	local unmetRequest = ClassHasUnmetRequest(task.classToken)
+	-- tint the backdrop with SetVertexColor (NOT SetColorTexture, which would
+	-- replace the WHITE8x8 texture and drop the rounded corner mask)
 	if task.noneAssigned then
-		btn.bg:SetColorTexture(0, 0, 0, 0.65)
+		btn.bg:SetVertexColor(0, 0, 0, 0.65)
 		-- even a none-assigned class can carry a request the paladin should notice
 		if unmetRequest then
 			SetButtonBorder(btn, REQUEST_R, REQUEST_G, REQUEST_B) -- yellow
@@ -198,16 +200,16 @@ local function UpdateButtonTexts(btn, task)
 			SetButtonBorder(btn) -- no assignment: no status
 		end
 	elseif inRangeMissing > 0 then
-		btn.bg:SetColorTexture(0.55, 0.10, 0.10, 0.85)
+		btn.bg:SetVertexColor(0.55, 0.10, 0.10, 0.85)
 		SetButtonBorder(btn, 0.85, 0.15, 0.15) -- red (outranks a request)
 	elseif unmetRequest then
-		btn.bg:SetColorTexture(0, 0, 0, 0.65)
+		btn.bg:SetVertexColor(0, 0, 0, 0.65)
 		SetButtonBorder(btn, REQUEST_R, REQUEST_G, REQUEST_B) -- yellow: unmet request
 	elseif task.expiring > 0 or (task.outOfRange or 0) > 0 then
-		btn.bg:SetColorTexture(0.55, 0.45, 0.05, 0.85)
+		btn.bg:SetVertexColor(0.55, 0.45, 0.05, 0.85)
 		SetButtonBorder(btn, 0.90, 0.70, 0.10) -- amber
 	else
-		btn.bg:SetColorTexture(0, 0, 0, 0.65)
+		btn.bg:SetVertexColor(0, 0, 0, 0.65)
 		SetButtonBorder(btn, 0.10, 0.80, 0.10) -- green: everyone covered
 	end
 end
@@ -260,7 +262,6 @@ local FLYOUT_HEADER = 20
 local FLYOUT_FOOTER = 5 -- bottom padding only (no hint line)
 local FLYOUT_PAD = 6
 local FLYOUT_WIDTH = 190
-local FLYOUT_BORDER = 2
 local FLYOUT_ICON = FLYOUT_ROW_H - 6
 
 local function FindButtonForClass(classToken)
@@ -273,13 +274,13 @@ local function FindButtonForClass(classToken)
 end
 
 local function SetRowBorder(row, r, g, b)
-	for _, tex in pairs(row.borders) do
-		if r then
-			tex:SetColorTexture(r, g, b, 0.9)
-			tex:Show()
-		else
-			tex:Hide()
-		end
+	if not row.iconFrame then
+		return
+	end
+	if r then
+		row.iconFrame:SetVertexColor(r, g, b, 1)
+	else
+		row.iconFrame:SetVertexColor(0.5, 0.42, 0.22, 0.85) -- neutral gold frame, no status
 	end
 end
 
@@ -427,7 +428,13 @@ local function AcquireFlyoutRow(index)
 	row.icon = row:CreateTexture(nil, "ARTWORK")
 	row.icon:SetSize(FLYOUT_ICON, FLYOUT_ICON)
 	row.icon:SetPoint("LEFT", 3, 0)
-	row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+	row.icon:SetMask(BTN_MASK) -- rounded icon corners
+	-- rounded frame around the member icon; tinted per status in SetRowBorder
+	-- (green has / red missing / yellow requested / neutral gold otherwise)
+	row.iconFrame = row:CreateTexture(nil, "OVERLAY", nil, 1)
+	row.iconFrame:SetPoint("TOPLEFT", row.icon, "TOPLEFT", -1, 1)
+	row.iconFrame:SetPoint("BOTTOMRIGHT", row.icon, "BOTTOMRIGHT", 1, -1)
+	row.iconFrame:SetTexture(BTN_FRAME)
 	row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	row.name:SetPoint("LEFT", row.icon, "RIGHT", 4, 0)
 	-- reserve room on the right for the request badge (shown only when requested)
@@ -438,27 +445,8 @@ local function AcquireFlyoutRow(index)
 	row.reqBadge = row:CreateTexture(nil, "OVERLAY")
 	row.reqBadge:SetSize(FLYOUT_ICON, FLYOUT_ICON)
 	row.reqBadge:SetPoint("RIGHT", -2, 0)
-	row.reqBadge:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+	row.reqBadge:SetMask(BTN_MASK) -- rounded corners, matching the assigned icon
 	row.reqBadge:Hide()
-	-- four thin edge textures form the status border (recoloured per refresh)
-	row.borders = {}
-	local top = row:CreateTexture(nil, "OVERLAY")
-	top:SetPoint("TOPLEFT")
-	top:SetPoint("TOPRIGHT")
-	top:SetHeight(FLYOUT_BORDER)
-	local bottom = row:CreateTexture(nil, "OVERLAY")
-	bottom:SetPoint("BOTTOMLEFT")
-	bottom:SetPoint("BOTTOMRIGHT")
-	bottom:SetHeight(FLYOUT_BORDER)
-	local left = row:CreateTexture(nil, "OVERLAY")
-	left:SetPoint("TOPLEFT")
-	left:SetPoint("BOTTOMLEFT")
-	left:SetWidth(FLYOUT_BORDER)
-	local right = row:CreateTexture(nil, "OVERLAY")
-	right:SetPoint("TOPRIGHT")
-	right:SetPoint("BOTTOMRIGHT")
-	right:SetWidth(FLYOUT_BORDER)
-	row.borders.top, row.borders.bottom, row.borders.left, row.borders.right = top, bottom, left, right
 	row:SetScript("OnMouseWheel", function(self, delta)
 		if not self.memberName then
 			return
@@ -813,8 +801,28 @@ local function CreateAuraButton()
 	return btn
 end
 
+-- true if the player currently has the given aura active (auras show as a
+-- self-buff on the paladin), so the button can grey out when it is already up
+local function PlayerHasAura(auraName)
+	if not auraName then
+		return false
+	end
+	for i = 1, 40 do
+		local name = UnitBuff("player", i)
+		if not name then
+			break
+		end
+		if name == auraName then
+			return true
+		end
+	end
+	return false
+end
+
 -- aura-button visuals + secure self-cast attribute. The attribute is written
--- only out of combat; the combat branch refreshes the icon alone.
+-- only out of combat; the combat branch refreshes the icon alone. The icon is
+-- greyed out (desaturated + dimmed) when the assigned aura is already active,
+-- so a bright icon means "still needs to be activated".
 local function RefreshAuraButton()
 	if not auraButton then
 		return
@@ -823,9 +831,11 @@ local function RefreshAuraButton()
 	local id = me and HO.Plan.GetAura(me)
 	local aura = id and HO.Data.auras[id]
 	local castable = aura and aura.known and aura.name
+	local active = castable and PlayerHasAura(aura.name)
 	if InCombatLockdown() then
 		auraButton.icon:SetTexture((castable and aura.icon) or NONE_ICON)
-		auraButton.icon:SetDesaturated(false)
+		auraButton.icon:SetDesaturated(active or false)
+		auraButton.icon:SetAlpha(active and 0.45 or 1)
 		return
 	end
 	if castable then
@@ -837,7 +847,8 @@ local function RefreshAuraButton()
 		auraButton:SetAttribute("spell1", nil)
 		auraButton.icon:SetTexture(NONE_ICON)
 	end
-	auraButton.icon:SetDesaturated(false)
+	auraButton.icon:SetDesaturated(active or false)
+	auraButton.icon:SetAlpha(active and 0.45 or 1)
 end
 
 -- user-configurable UI scale for the cast bar. The bar is implicitly protected

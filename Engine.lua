@@ -241,6 +241,17 @@ function Engine.Update()
 			end
 		end
 		table.sort(expiring, function(a, b)
+			-- when this class refreshes via a greater cast, that cast wipes this
+			-- paladin's own singles across the whole class — so class-wide items
+			-- must refresh before any override/pet single the greater would
+			-- immediately erase; within each group keep the by-remaining order
+			if greater then
+				local aSingle = a.isOverride or a.entry.isPet
+				local bSingle = b.isOverride or b.entry.isPet
+				if aSingle ~= bSingle then
+					return not aSingle
+				end
+			end
 			return (a.remaining or 0) < (b.remaining or 0)
 		end)
 

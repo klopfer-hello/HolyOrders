@@ -153,6 +153,7 @@ function Plan.Save(label)
 	HO.db.plans[sig] = stored
 	HO.db.activeSignature = sig
 	Prune()
+	HO.Log("plan", "saved plan for " .. sig .. (label and label ~= "" and (" as '" .. label .. "'") or ""))
 	return sig
 end
 
@@ -179,6 +180,7 @@ local function OnRosterChanged()
 		HO.db.activeSignature = sig
 		stored.meta.lastUsed = time()
 		Plan.suggestion = nil
+		HO.Log("plan", "auto-applied stored plan for " .. sig)
 		HO.Print("stored plan applied for this paladin roster" .. (stored.meta.name and (" ('" .. stored.meta.name .. "')") or ""))
 		return
 	end

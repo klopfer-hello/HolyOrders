@@ -235,11 +235,21 @@ function Planner.Run()
 	end
 
 	-- summary
+	local overrideCount = 0
+	if plan.autoPlayer then
+		for _, targets in pairs(plan.autoPlayer) do
+			for _ in pairs(targets) do
+				overrideCount = overrideCount + 1
+			end
+		end
+	end
 	local parts = {}
 	for _, pally in ipairs(pallys) do
 		local blessing = assigned[pally]
 		local label = blessing and (HO.Data.blessings[blessing].name or HO.Data.blessings[blessing].key) or "singles only"
 		table.insert(parts, pally .. " > " .. label)
 	end
-	return true, table.concat(parts, "; ")
+	local summary = table.concat(parts, "; ")
+	HO.Log("planner", string.format("run: raid=%s pallys=%d autoOverrides=%d | %s", tostring(isRaid), #pallys, overrideCount, summary))
+	return true, summary
 end

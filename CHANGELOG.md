@@ -21,3 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   solo-raid Salvation mode with tank protection, per-member preference singles.
 - Class/spec blessing preferences with shipped defaults; `/ho spec` tags a
   member's spec for the planner.
+- Persistent debug log in SavedVariables (command errors, roster/planner/plan
+  events); `/ho log [n|clear]` and `/ho dump` state snapshot for offline
+  analysis.
+
+### Fixed
+- Unicode arrows replaced with ASCII in chat output (rendered as boxes).
+- Case-insensitive name lookup for `/ho override|tank|spec`; tank no longer
+  accepts names outside the roster.

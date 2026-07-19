@@ -82,6 +82,7 @@ function Roster.Rebuild()
 		AddEntry(petUnit, ownerEntry)
 	end
 
+	HO.Log("roster", string.format("rebuild: %d units, paladins: %s", #Roster.units, table.concat(Roster.Paladins(), ";")))
 	Notify()
 end
 

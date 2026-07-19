@@ -174,6 +174,59 @@ HO.commands["override"] = function(rest)
 	end
 end
 
+-- debugging -------------------------------------------------------------------
+
+HO.commands["log"] = function(rest)
+	if rest == "clear" then
+		wipe(HO.db.log)
+		HO.Print("debug log cleared")
+		return
+	end
+	local n = tonumber(rest) or 15
+	local log = HO.db.log
+	HO.Print(string.format("debug log (%d entries, showing last %d):", #log, math.min(n, #log)))
+	for i = math.max(1, #log - n + 1), #log do
+		HO.PrintLine(log[i])
+	end
+end
+
+-- full state snapshot into SavedVariables; visible after /reload or logout
+HO.commands["dump"] = function()
+	local dump = {
+		at = date("%Y-%m-%d %H:%M:%S"),
+		version = HO.VERSION,
+		signature = HO.db.activeSignature,
+		talentSummary = HO.Talents.SpecSummary(),
+		talentRanks = {},
+		blessings = {},
+		roster = {},
+	}
+	for id, rank in pairs(HO.Talents.ranks) do
+		dump.talentRanks[id] = rank
+	end
+	for id, blessing in ipairs(HO.Data.blessings) do
+		dump.blessings[id] = string.format(
+			"%s known=%s rank=%s greater=%s grank=%s",
+			blessing.key,
+			tostring(blessing.known), tostring(blessing.rank),
+			tostring(blessing.greaterKnown), tostring(blessing.greaterRank)
+		)
+	end
+	for _, entry in ipairs(HO.Roster.units) do
+		table.insert(dump.roster, string.format(
+			"%s class=%s level=%s group=%s%s%s%s",
+			entry.name or "?", entry.class or "?",
+			tostring(entry.level), tostring(entry.subgroup),
+			entry.isPet and (" pet-of=" .. (entry.owner or "?")) or "",
+			entry.tankRole and " MAINTANK" or "",
+			entry.online and "" or " offline"
+		))
+	end
+	HO.db.dump = dump
+	HO.Log("dump", "state snapshot stored")
+	HO.Print("state snapshot stored in SavedVariables — do /reload (or log out) so it is written to disk")
+end
+
 -- auto-planner ----------------------------------------------------------------
 
 HO.commands["auto"] = function()

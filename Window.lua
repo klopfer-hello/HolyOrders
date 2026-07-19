@@ -288,7 +288,8 @@ function Window.Refresh()
 	local numCols = math.min(#pallys, MAX_COLS)
 
 	if win.salvBtn then
-		win.salvBtn:SetText(HO.Plan.NoSalvationActive() and "|cffff4040Salv OFF|r" or "No Salv")
+		local active = HO.Plan.NoSalvationActive() or HO.db.noSalvBy
+		win.salvBtn:SetText(active and "|cffff4040Salv OFF|r" or "No Salv")
 	end
 
 	-- column headers (paladin short names, vertical position under header)

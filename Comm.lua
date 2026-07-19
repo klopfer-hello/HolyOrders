@@ -458,6 +458,36 @@ function Comm.RequestLog(target)
 	Send("LR:", "WHISPER", target)
 end
 
+-- no-Salvation mode state sync ------------------------------------------------
+
+function Comm.SendNoSalv(active)
+	Send("NS:" .. (active and "1" or "0"))
+end
+
+handlers["NS"] = function(sender, payload)
+	local entry = HO.Roster.byName[sender]
+	if not (entry and (entry.rank or 0) > 0) then
+		return -- lead/assist only, like the feature itself
+	end
+	if payload == "1" then
+		HO.db.noSalvBy = sender
+		HO.Print("no-Salvation mode enabled by " .. sender)
+	else
+		HO.db.noSalvBy = nil
+		if HO.Plan.NoSalvationActive() then
+			-- we hold the snapshot; a lead asked for the revert — restore
+			-- exactly and share both the plan and the ended state
+			HO.Plan.SetNoSalvation(false)
+			Comm.SendPlanApply()
+			Comm.SendNoSalv(false)
+			HO.Print("no-Salvation mode reverted (requested by " .. sender .. ")")
+		else
+			HO.Print("no-Salvation mode ended by " .. sender)
+		end
+	end
+	RefreshUI()
+end
+
 HO.RegisterEvent("CHAT_MSG_ADDON", function(prefix, message, _, senderFull)
 	if prefix ~= PREFIX then
 		return

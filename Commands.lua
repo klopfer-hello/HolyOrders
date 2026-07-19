@@ -347,8 +347,19 @@ HO.commands["nosalv"] = function()
 		return
 	end
 	if HO.Plan.NoSalvationActive() then
+		-- we hold the snapshot: restore and share plan + ended state
 		HO.Plan.SetNoSalvation(false)
+		HO.db.noSalvBy = nil
 		HO.Print("Salvation restored — plan reverted to the pre-encounter state")
+		HO.Comm.SendNoSalv(false)
+	elseif HO.db.noSalvBy then
+		-- active, but another paladin holds the snapshot: ask them to revert
+		HO.db.noSalvBy = nil
+		HO.Comm.SendNoSalv(false)
+		HO.Print("revert requested from the paladin who enabled no-Salvation mode")
+		HO.Window.Refresh()
+		HO.Bar.Refresh()
+		return
 	else
 		local ok, changed = HO.Plan.SetNoSalvation(true)
 		if not ok then
@@ -356,6 +367,7 @@ HO.commands["nosalv"] = function()
 			return
 		end
 		HO.Print("no-Salvation mode ON: " .. changed .. " assignment(s) swapped — '/ho nosalv' reverts")
+		HO.Comm.SendNoSalv(true)
 	end
 	if HO.Comm and HO.Comm.SendPlanApply() then
 		HO.Print("plan broadcast to the group")

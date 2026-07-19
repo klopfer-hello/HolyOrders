@@ -78,6 +78,7 @@ function Options.Create()
 
 	local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
 	close:SetPoint("TOPRIGHT", 2, 2)
+	close:SetFrameLevel(header:GetFrameLevel() + 1) -- above the drag header
 	close:SetScript("OnClick", function()
 		frame:Hide()
 	end)

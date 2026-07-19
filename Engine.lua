@@ -130,7 +130,9 @@ local function UseGreater(assign, eligiblePlayers)
 	if assign.mode == "normal" then
 		return false
 	end
-	return eligiblePlayers >= 2 -- auto: singles for small groups
+	-- auto: greater from N members; N=1 when the user prefers the 30-min
+	-- duration over saving symbols
+	return eligiblePlayers >= (HO.db.options.greaterMin or 2)
 end
 
 function Engine.Update()

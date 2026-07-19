@@ -265,6 +265,33 @@ HO.commands["win"] = function()
 	HO.Window.Toggle()
 end
 
+HO.commands["opt"] = function()
+	HO.Options.Toggle()
+end
+
+-- announce missing blessings to the group (lead tool)
+HO.commands["report"] = function()
+	HO.Engine.Update()
+	local lines = {}
+	for classToken, task in pairs(HO.Engine.tasks) do
+		if task.missing > 0 then
+			table.insert(lines, classToken .. ": " .. task.missing)
+		end
+	end
+	if #lines == 0 then
+		HO.Print("no assigned blessings are missing")
+		return
+	end
+	table.sort(lines)
+	local msg = "HolyOrders — missing blessings: " .. table.concat(lines, ", ")
+	local channel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY")
+	if channel then
+		SendChatMessage(msg, channel)
+	else
+		HO.Print(msg)
+	end
+end
+
 -- sync ------------------------------------------------------------------------
 
 HO.commands["sync"] = function()

@@ -38,11 +38,38 @@ end
 
 -- which blessing target `entry` should get from me: override wins, then the
 -- class assignment
+-- is this pet buffed at all, per the owner-class settings?
+local function PetIncluded(entry)
+	local petOpts = HO.db.options.pets or {}
+	local ownerEntry = entry.owner and HO.Roster.byName[entry.owner]
+	local ownerClass = ownerEntry and ownerEntry.class
+	if ownerClass == "HUNTER" then
+		return petOpts.hunter ~= false
+	end
+	if ownerClass == "WARLOCK" then
+		return petOpts.warlock == true
+	end
+	return true
+end
+
 local function TargetBlessing(plan, me, entry)
 	local overrides = plan.player[me]
 	local override = overrides and entry.name and overrides[entry.name]
 	if override then
 		return override, true
+	end
+	if entry.isPet then
+		-- pets get the configured pet blessing, cast by whoever covers
+		-- the pet's base class
+		if not PetIncluded(entry) then
+			return nil, false
+		end
+		local assigns = plan.class[me]
+		if assigns and entry.class and assigns[entry.class] then
+			local petOpts = HO.db.options.pets
+			return (petOpts and petOpts.blessing) or 2, false
+		end
+		return nil, false
 	end
 	local assigns = plan.class[me]
 	local assign = assigns and entry.class and assigns[entry.class]

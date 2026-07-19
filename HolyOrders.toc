@@ -2,7 +2,7 @@
 ## Title: HolyOrders
 ## Notes: Paladin blessing coordination — persistent plans, reliable sync
 ## Author: Klopfer-Hello
-## Version: 0.5.0
+## Version: 0.6.0
 ## IconTexture: Interface/AddOns/HolyOrders/Icons/HolyOrders
 ## DefaultState: enabled
 ## SavedVariables: HolyOrdersDB
@@ -17,4 +17,7 @@ Comm.lua
 Engine.lua
 Bar.lua
 Window.lua
+Options.lua
+MinimapButton.lua
+Inspect.lua
 Commands.lua

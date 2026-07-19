@@ -834,8 +834,8 @@ local function RefreshAuraButton()
 	local dim = castable and not PlayerHasAura(aura.name)
 	if InCombatLockdown() then
 		auraButton.icon:SetTexture((castable and aura.icon) or NONE_ICON)
-		auraButton.icon:SetDesaturated(active or false)
-		auraButton.icon:SetAlpha(active and 0.45 or 1)
+		auraButton.icon:SetDesaturated(dim or false)
+		auraButton.icon:SetAlpha(dim and 0.45 or 1)
 		return
 	end
 	if castable then

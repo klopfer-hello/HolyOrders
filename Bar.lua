@@ -155,6 +155,314 @@ local function UpdateButtonTexts(btn, task)
 	end
 end
 
+-- per-class fly-out ----------------------------------------------------------
+-- A NON-secure panel (parented to UIParent, never into the secure bar) anchored
+-- visually to a class button. It lists that class's roster members with the
+-- blessing each is assigned and a coloured status border — green = has it,
+-- red = assigned but missing, neutral = no assignment or out of range (status
+-- unknowable). Wheeling a row re-assigns that member's blessing and right-click
+-- clears it, exactly like the assignment window's member cell (same Plan calls,
+-- so it stays synced). It never casts, so it may be shown/hidden freely.
+local flyout
+local flyoutRows = {}
+local flyoutClass -- classToken currently displayed, nil when closed
+local FLYOUT_ROW_H = 20
+local FLYOUT_HEADER = 20
+local FLYOUT_FOOTER = 16
+local FLYOUT_PAD = 6
+local FLYOUT_WIDTH = 178
+local FLYOUT_BORDER = 2
+local FLYOUT_ICON = FLYOUT_ROW_H - 4
+
+local function FindButtonForClass(classToken)
+	for i = 1, MAX_BUTTONS do
+		local btn = buttons[i]
+		if btn:IsShown() and btn.task and btn.task.classToken == classToken then
+			return btn
+		end
+	end
+end
+
+local function FlyoutBlessingName(id)
+	local b = HO.Data.blessings[id]
+	return b and (b.name or b.key) or tostring(id)
+end
+
+local function SetRowBorder(row, r, g, b)
+	for _, tex in pairs(row.borders) do
+		if r then
+			tex:SetColorTexture(r, g, b, 0.9)
+			tex:Show()
+		else
+			tex:Hide()
+		end
+	end
+end
+
+-- ring of override blessings for the player: every castable blessing in id order,
+-- then none (0). Mirrors the assignment window's member-cell cycle (same id set
+-- and order, overrides bypass eligibility); wheel-up advances, wheel-down retreats.
+local function CycleMemberOverride(me, current, delta)
+	local ring = {}
+	for id = 1, HO.Data.NUM_BLESSINGS do
+		if HO.Planner.IsAvailable(me, id) then
+			ring[#ring + 1] = id
+		end
+	end
+	ring[#ring + 1] = 0 -- none closes the ring
+	local cur = current or 0
+	local idx = #ring -- default to the none slot (also covers an unknown current)
+	for i, id in ipairs(ring) do
+		if id == cur then
+			idx = i
+			break
+		end
+	end
+	local nextIdx = ((idx - 1 + delta) % #ring) + 1
+	return ring[nextIdx]
+end
+
+-- apply an override change through the SAME public path the assignment window's
+-- member cell uses, so the edit syncs and the member "liking" stays consistent.
+-- Pets never record a liking (a pet blessing is an option, not a member wish).
+local function ApplyMemberOverride(memberName, isPet, newID)
+	local me = HO.FullName("player")
+	if not me then
+		return
+	end
+	HO.Plan.SetPlayerOverride(me, memberName, newID)
+	if not isPet then
+		HO.Plan.SetMemberPref(memberName, (newID and newID ~= 0) and newID or nil)
+	end
+	-- Bar.Refresh recomputes the engine and re-renders the fly-out (via its hook);
+	-- refresh the window too so an open assignment grid stays in sync
+	Bar.Refresh()
+	if HO.Window and HO.Window.Refresh then
+		HO.Window.Refresh()
+	end
+end
+
+local function AcquireFlyoutRow(index)
+	local row = flyoutRows[index]
+	if row then
+		return row
+	end
+	row = CreateFrame("Button", nil, flyout)
+	row:SetSize(FLYOUT_WIDTH - 2 * FLYOUT_PAD, FLYOUT_ROW_H)
+	row:RegisterForClicks("RightButtonUp")
+	row:EnableMouseWheel(true)
+	row.bg = row:CreateTexture(nil, "BACKGROUND")
+	row.bg:SetAllPoints()
+	row.bg:SetColorTexture(1, 1, 1, 0.05)
+	row.icon = row:CreateTexture(nil, "ARTWORK")
+	row.icon:SetSize(FLYOUT_ICON, FLYOUT_ICON)
+	row.icon:SetPoint("LEFT", 3, 0)
+	row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+	row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	row.name:SetPoint("LEFT", row.icon, "RIGHT", 4, 0)
+	row.name:SetPoint("RIGHT", -3, 0)
+	row.name:SetJustifyH("LEFT")
+	-- four thin edge textures form the status border (recoloured per refresh)
+	row.borders = {}
+	local top = row:CreateTexture(nil, "OVERLAY")
+	top:SetPoint("TOPLEFT")
+	top:SetPoint("TOPRIGHT")
+	top:SetHeight(FLYOUT_BORDER)
+	local bottom = row:CreateTexture(nil, "OVERLAY")
+	bottom:SetPoint("BOTTOMLEFT")
+	bottom:SetPoint("BOTTOMRIGHT")
+	bottom:SetHeight(FLYOUT_BORDER)
+	local left = row:CreateTexture(nil, "OVERLAY")
+	left:SetPoint("TOPLEFT")
+	left:SetPoint("BOTTOMLEFT")
+	left:SetWidth(FLYOUT_BORDER)
+	local right = row:CreateTexture(nil, "OVERLAY")
+	right:SetPoint("TOPRIGHT")
+	right:SetPoint("BOTTOMRIGHT")
+	right:SetWidth(FLYOUT_BORDER)
+	row.borders.top, row.borders.bottom, row.borders.left, row.borders.right = top, bottom, left, right
+	row:SetScript("OnMouseWheel", function(self, delta)
+		if not self.memberName then
+			return
+		end
+		if InCombatLockdown() then
+			-- mirror the class wheel's combat guard: the resulting secure-attribute
+			-- update on the bar must wait for combat end anyway
+			HO.Print(L["assignment changes apply after combat"])
+			return
+		end
+		local me = HO.FullName("player")
+		if not me then
+			return
+		end
+		local plan = HO.Plan.Active()
+		local cur = plan.player[me] and plan.player[me][self.memberName]
+		local newID = CycleMemberOverride(me, cur, delta > 0 and 1 or -1)
+		ApplyMemberOverride(self.memberName, self.isPet, newID)
+	end)
+	row:SetScript("OnClick", function(self, mouseBtn)
+		if mouseBtn ~= "RightButton" or not self.memberName then
+			return
+		end
+		if InCombatLockdown() then
+			HO.Print(L["assignment changes apply after combat"])
+			return
+		end
+		ApplyMemberOverride(self.memberName, self.isPet, 0) -- clear the override (and liking)
+	end)
+	row:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText(self.memberName or "?")
+		if self.blessingID then
+			GameTooltip:AddLine(FlyoutBlessingName(self.blessingID), 1, 1, 1)
+			if self.inRange == false then
+				GameTooltip:AddLine(L["out of range"], 0.7, 0.7, 0.7)
+			elseif self.hasBuff == true then
+				GameTooltip:AddLine(L["has the blessing"], 0.6, 1, 0.6)
+			elseif self.hasBuff == false then
+				GameTooltip:AddLine(L["missing the blessing"], 1, 0.4, 0.4)
+			end
+		else
+			GameTooltip:AddLine(L["no buff assigned"], 0.8, 0.8, 0.8)
+		end
+		GameTooltip:AddLine(L["wheel: change blessing — right-click: clear"], 0.8, 0.8, 0.8)
+		GameTooltip:Show()
+	end)
+	row:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+	flyoutRows[index] = row
+	return row
+end
+
+local function CreateFlyout()
+	if flyout then
+		return
+	end
+	-- parented to UIParent (NOT the secure bar) so it can never taint the cast
+	-- buttons; it is a plain frame that only edits assignments and shows status
+	flyout = CreateFrame("Frame", "HolyOrdersFlyout", UIParent)
+	flyout:SetWidth(FLYOUT_WIDTH)
+	flyout:SetHeight(FLYOUT_HEADER + FLYOUT_ROW_H + FLYOUT_FOOTER)
+	flyout:EnableMouse(true) -- swallow clicks so they don't fall through to the world
+	flyout:SetClampedToScreen(true)
+	flyout.bg = flyout:CreateTexture(nil, "BACKGROUND")
+	flyout.bg:SetAllPoints()
+	flyout.bg:SetColorTexture(0.05, 0.05, 0.08, 0.94)
+	flyout.title = flyout:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	flyout.title:SetPoint("TOPLEFT", FLYOUT_PAD, -4)
+	flyout.title:SetPoint("TOPRIGHT", -FLYOUT_PAD, -4)
+	flyout.title:SetJustifyH("LEFT")
+	flyout.hint = flyout:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	flyout.hint:SetPoint("BOTTOMLEFT", FLYOUT_PAD, 4)
+	flyout.hint:SetPoint("BOTTOMRIGHT", -FLYOUT_PAD, 4)
+	flyout.hint:SetJustifyH("LEFT")
+	flyout.hint:SetText(L["wheel: change blessing — right-click: clear"])
+	flyout:Hide()
+end
+
+local function FlyoutHide()
+	flyoutClass = nil
+	if flyout then
+		flyout:Hide()
+	end
+end
+
+-- rebuild the fly-out's rows from the engine's live per-member status; called on
+-- every bar refresh while it is open so the green/red borders update in place
+local function FlyoutRefresh()
+	if not flyoutClass or not flyout or not flyout:IsShown() then
+		return
+	end
+	-- re-find the button that currently represents this class; if the class left
+	-- the bar (or the bar hid), close the fly-out
+	local anchor = FindButtonForClass(flyoutClass)
+	if not anchor then
+		FlyoutHide()
+		return
+	end
+	flyout:ClearAllPoints()
+	flyout:SetPoint("TOP", anchor, "BOTTOM", 0, -3)
+	flyout.title:SetText(flyoutClass)
+
+	local members = HO.Engine.ClassMembers(flyoutClass)
+	local count = 0
+	for i, m in ipairs(members) do
+		count = i
+		local row = AcquireFlyoutRow(i)
+		row.memberName = m.name
+		row.isPet = m.isPet
+		row.blessingID = m.blessingID
+		row.hasBuff = m.hasBuff
+		row.inRange = m.inRange
+		local blessing = m.blessingID and HO.Data.blessings[m.blessingID]
+		row.icon:SetTexture((blessing and blessing.icon) or NONE_ICON)
+		local short = m.name:match("^([^%-]+)") or m.name
+		if m.isPet then
+			local ownerShort = m.owner and (m.owner:match("^([^%-]+)") or m.owner) or "?"
+			row.name:SetText(short .. " |cff9d9d9d" .. string.format(L["(pet of %s)"], ownerShort) .. "|r")
+		else
+			row.name:SetText(short)
+		end
+		-- status border: out-of-range is unknowable, so neutral/dim rather than red
+		if not m.blessingID then
+			SetRowBorder(row) -- no assignment → neutral
+			row.icon:SetDesaturated(true)
+			row.icon:SetAlpha(0.8)
+		elseif m.inRange == false then
+			SetRowBorder(row) -- can't know the buff at range → neutral, dimmed
+			row.icon:SetDesaturated(false)
+			row.icon:SetAlpha(0.35)
+		elseif m.hasBuff == true then
+			SetRowBorder(row, 0.10, 0.80, 0.10) -- green: has it
+			row.icon:SetDesaturated(false)
+			row.icon:SetAlpha(1)
+		elseif m.hasBuff == false then
+			SetRowBorder(row, 0.85, 0.15, 0.15) -- red: assigned but missing
+			row.icon:SetDesaturated(false)
+			row.icon:SetAlpha(1)
+		else
+			SetRowBorder(row) -- status unknown → neutral
+			row.icon:SetDesaturated(false)
+			row.icon:SetAlpha(1)
+		end
+		row:ClearAllPoints()
+		row:SetPoint("TOPLEFT", flyout, "TOPLEFT", FLYOUT_PAD, -(FLYOUT_HEADER + (i - 1) * FLYOUT_ROW_H))
+		row:Show()
+	end
+	for i = count + 1, #flyoutRows do
+		flyoutRows[i]:Hide()
+	end
+
+	local rows = count > 0 and count or 1 -- keep a minimum height when empty
+	flyout:SetHeight(FLYOUT_HEADER + rows * FLYOUT_ROW_H + FLYOUT_FOOTER)
+	-- strata just above the bar so the fly-out always reads over it
+	local barStrata = bar and bar:GetFrameStrata() or "LOW"
+	flyout:SetFrameStrata(barStrata == "HIGH" and "DIALOG" or "MEDIUM")
+	flyout:SetToplevel(true)
+end
+
+local function FlyoutOpen(classToken)
+	if not classToken then
+		return
+	end
+	CreateFlyout()
+	flyoutClass = classToken
+	flyout:Show()
+	FlyoutRefresh()
+end
+
+local function FlyoutToggle(classToken)
+	if not classToken then
+		return
+	end
+	if flyoutClass == classToken and flyout and flyout:IsShown() then
+		FlyoutHide()
+	else
+		FlyoutOpen(classToken)
+	end
+end
+
 local function CreateButton(index)
 	local btn = CreateFrame("Button", "HolyOrdersBarButton" .. index, bar, "SecureActionButtonTemplate")
 	btn:SetSize(BUTTON_SIZE, BUTTON_SIZE)
@@ -164,6 +472,16 @@ local function CreateButton(index)
 	-- left: the planned cast (greater when planned); right: always a single
 	btn:SetAttribute("type1", "spell")
 	btn:SetAttribute("type2", "spell")
+	-- shift-left opens the per-class fly-out instead of casting: an empty
+	-- shift-type1 (looked up before type1 when Shift is held) suppresses the
+	-- cast, and PreClick opens the NON-secure fly-out. Set once here, out of
+	-- combat; it is static and never touched again, so it never taints the bar.
+	btn:SetAttribute("shift-type1", "")
+	btn:SetScript("PreClick", function(self, mouseBtn, down)
+		if down and mouseBtn == "LeftButton" and IsShiftKeyDown() and self.task then
+			FlyoutToggle(self.task.classToken)
+		end
+	end)
 	-- wheel: cycle my class assignment (out of combat; syncs + updates window)
 	btn:EnableMouseWheel(true)
 	btn:SetScript("OnMouseWheel", function(self, delta)
@@ -448,6 +766,7 @@ function Bar.Refresh()
 			end
 		end
 		RefreshAuraButton() -- icon only in combat; never touches attributes
+		FlyoutRefresh() -- live green/red status is safe (and useful) in combat
 		return
 	end
 
@@ -514,8 +833,10 @@ function Bar.Refresh()
 	if isPally and not BarOptions().hidden and (index > 0 or hasAura) then
 		bar:Show()
 		auraButton:Show()
+		FlyoutRefresh() -- keep an open fly-out live and re-anchored
 	else
 		bar:Hide()
+		FlyoutHide() -- the bar (and its buttons) went away; close the fly-out
 	end
 
 	-- a tooltip open over a button now describes freshly-reassigned data; a

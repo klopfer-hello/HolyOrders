@@ -69,6 +69,14 @@ L["right-click: force rebuff (pre-pull refresh)"] = "Rechtsklick: Zwangs-Rebuff 
 L["shift-right-click: assignment window"] = "Shift-Rechtsklick: Zuteilungsfenster"
 L["mouse wheel: change my assignment"] = "Mausrad: meine Zuteilung wechseln"
 
+-- cast-bar class fly-out
+L["no buff assigned"] = "Kein Segen zugewiesen"
+L["has the blessing"] = "hat den Segen"
+L["missing the blessing"] = "Segen fehlt"
+L["out of range"] = "außer Reichweite"
+L["wheel: change blessing — right-click: clear"] = "Mausrad: Segen wechseln — Rechtsklick: leeren"
+L["assignment changes apply after combat"] = "Zuteilungsänderungen werden nach dem Kampf übernommen"
+
 -- paladin aura
 L["Aura"] = "Aura"
 L["My Aura"] = "Meine Aura"

@@ -13,6 +13,10 @@ local FRESH_AGE = 120 -- force mode: buffs older than this are re-cast
 local FORCE_DURATION = 300 -- force mode safety timeout
 
 Engine.tasks = {} -- [classToken] = task table, built in Update()
+-- display-only per-member buff status, consumed by the bar fly-out. Rebuilt each
+-- Update() from the same pool data; it NEVER influences a cast decision.
+-- [classToken] = { {name, unit, isPet, owner, blessingID, hasBuff, inRange}, ... }
+Engine.classMembers = {}
 Engine.forceUntil = nil
 
 -- force-rebuff sweep: pre-pull refresh of everything that is not fresh;
@@ -157,9 +161,14 @@ function Engine.WouldUseGreater(classToken)
 	return greaterVerdict[classToken]
 end
 
+function Engine.ClassMembers(classToken)
+	return Engine.classMembers[classToken] or {}
+end
+
 function Engine.Update()
 	wipe(Engine.tasks)
 	wipe(greaterVerdict)
+	wipe(Engine.classMembers)
 	local plan = HO.Plan.Active()
 	local me = HO.FullName("player")
 	if not me then
@@ -176,17 +185,30 @@ function Engine.Update()
 				classTanks[entry.class] = true
 			end
 			local blessingID, isOverride = TargetBlessing(plan, me, entry)
+			-- pets group under their OWNER's class button; player eligibility
+			-- rules do not apply to pets
+			local poolClass = entry.class
+			if entry.isPet then
+				local ownerEntry = entry.owner and HO.Roster.byName[entry.owner]
+				poolClass = (ownerEntry and ownerEntry.class) or entry.class
+			end
+			-- display row for the fly-out: every member is listed (even with no
+			-- assigned blessing); hasBuff/inRange are filled below for pooled
+			-- members. This is purely for display and never gates a cast.
+			local member = {
+				name = entry.name,
+				unit = entry.unit,
+				isPet = entry.isPet or nil,
+				owner = entry.owner,
+				blessingID = (blessingID and blessingID > 0) and blessingID or nil,
+			}
+			Engine.classMembers[poolClass] = Engine.classMembers[poolClass] or {}
+			table.insert(Engine.classMembers[poolClass], member)
 			if blessingID and blessingID > 0 then
-				-- pets group under their OWNER's class button; player
-				-- eligibility rules do not apply to pets
-				local poolClass = entry.class
-				if entry.isPet then
-					local ownerEntry = entry.owner and HO.Roster.byName[entry.owner]
-					poolClass = (ownerEntry and ownerEntry.class) or entry.class
-				end
 				if isOverride or entry.isPet or HO.Data.IsEligible(entry.class, blessingID, isTank) then
 					pools[poolClass] = pools[poolClass] or {}
-					table.insert(pools[poolClass], { entry = entry, blessingID = blessingID, isOverride = isOverride })
+					-- keep the display row so the buff/range check below fills it in
+					table.insert(pools[poolClass], { entry = entry, blessingID = blessingID, isOverride = isOverride, member = member })
 				end
 			end
 		end
@@ -224,6 +246,11 @@ function Engine.Update()
 			item.remaining = remaining
 			local blessing = HO.Data.blessings[item.blessingID]
 			item.inRange = blessing and InCastRange(blessing, item.entry.unit)
+			-- feed the fly-out's live green/red status from the same check
+			if item.member then
+				item.member.hasBuff = has
+				item.member.inRange = item.inRange
+			end
 			if not has then
 				if Castable(item.entry) then
 					if not item.inRange then

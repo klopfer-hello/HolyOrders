@@ -73,6 +73,21 @@ local function Available(pallyName, blessingID)
 end
 Planner.IsAvailable = Available
 
+-- first preference in `list` that `caster` can actually deliver to this class:
+-- eligible for the class AND known by that paladin. Returns nil if none qualify.
+-- (Fixes members getting nothing when their top preference is uncastable.)
+local function FirstCastablePref(list, classToken, caster)
+	if not list then
+		return nil
+	end
+	for _, id in ipairs(list) do
+		if HO.Data.IsEligible(classToken, id, false) and Available(caster, id) then
+			return id
+		end
+	end
+	return nil
+end
+
 -- buff strength: improvement talents dominate (a maxed talent beats one
 -- spell rank), then spell rank, then greater-version knowledge as tiebreak
 local function Score(pallyName, blessingID)
@@ -204,9 +219,13 @@ local function RunCore(pallys)
 		for classToken, info in pairs(classes) do
 			local counts = {}
 			for _, entry in ipairs(info.list) do
-				local pref = Planner.ResolvePreference(entry.name, classToken, IsTankEntry(plan, entry))[1]
-				if pref and Available(pallys[1], pref) and HO.Data.IsEligible(classToken, pref, false) then
-					counts[pref] = (counts[pref] or 0) + 1
+				-- fall through the whole preference chain, not just the top entry,
+				-- so a member still counts when the paladin can't cast their first
+				-- choice (e.g. a paladin without Kings talented)
+				local prefs = Planner.ResolvePreference(entry.name, classToken, IsTankEntry(plan, entry))
+				local pick = FirstCastablePref(prefs, classToken, pallys[1])
+				if pick then
+					counts[pick] = (counts[pick] or 0) + 1
 				end
 			end
 			local best, bestCount
@@ -370,16 +389,26 @@ local function RunCore(pallys)
 	-- 4) per-member preference singles for what the coverage doesn't provide
 	for _, entry in ipairs(sortedUnits) do
 		if not entry.isPet and entry.name and not IsTankEntry(plan, entry) then
-			local pref = Planner.ResolvePreference(entry.name, entry.class, false)[1]
-			if pref and HO.Data.IsEligible(entry.class, pref, false) then
-				local receives = ClassReceives(entry.class, pref)
-				if solo and isRaid then
-					receives = true -- the Salvation plan stays intact for non-tanks
-				end
-				if not receives and not HasOverrideFor(plan, entry.name) then
-					local caster = NextCaster(pref, entry.class)
-					if caster then
-						AddAutoOverride(plan, caster, entry.name, pref)
+			if solo and isRaid then
+				-- solo raid: non-tanks keep the Salvation plan, no preference singles
+			elseif not HasOverrideFor(plan, entry.name) then
+				-- give the member the best preference they can actually get: walk
+				-- the chain in priority order. If the class already receives a
+				-- castable higher pref they are satisfied (no override); otherwise
+				-- place the first pref some paladin can cast. Only fall to the next
+				-- candidate when the current one is neither received nor castable by
+				-- anyone. Deterministic: candidates in preference order.
+				local prefs = Planner.ResolvePreference(entry.name, entry.class, false)
+				for _, pref in ipairs(prefs) do
+					if HO.Data.IsEligible(entry.class, pref, false) then
+						if ClassReceives(entry.class, pref) then
+							break
+						end
+						local caster = NextCaster(pref, entry.class)
+						if caster then
+							AddAutoOverride(plan, caster, entry.name, pref)
+							break
+						end
 					end
 				end
 			end
@@ -461,6 +490,10 @@ function Planner.Run()
 			-- non-leads cannot broadcast the whole plan; their own row is
 			-- still authoritative and syncs
 			HO.Comm.BroadcastOwnRow()
+			-- the local re-plan rewrote every paladin's row at unchanged revisions,
+			-- so the foreign rows are now wrong locally; ask each owner to re-send
+			-- their authoritative row (answered via random-delayed whisper)
+			HO.Comm.RequestSync()
 			HO.Print(HO.L["plan is local — only your own assignments sync (lead/assist can broadcast all)"])
 		end
 	end

@@ -114,7 +114,12 @@ SlashCmdList["HOLYORDERS"] = function(input)
 	input = (input or ""):gsub("^%s+", ""):gsub("%s+$", "")
 	local cmd, rest = input:match("^(%S+)%s*(.*)$")
 	cmd = cmd and cmd:lower() or ""
-	if commands[cmd] then
+	if cmd == "" then
+		-- bare /ho opens the assignment window
+		if HO.Window and HO.Window.Toggle then
+			HO.Window.Toggle()
+		end
+	elseif commands[cmd] then
 		HO.Log("cmd", "/ho " .. cmd .. (rest ~= "" and (" " .. rest) or ""))
 		local ok, err = pcall(commands[cmd], rest)
 		if not ok then
@@ -122,14 +127,6 @@ SlashCmdList["HOLYORDERS"] = function(input)
 			HO.Print("error in '" .. cmd .. "' (logged): " .. tostring(err))
 		end
 	else
-		HO.Print("v" .. HO.VERSION .. " — commands:")
-		local names = {}
-		for name in pairs(commands) do
-			table.insert(names, name)
-		end
-		table.sort(names)
-		for _, name in ipairs(names) do
-			HO.PrintLine("/ho " .. name)
-		end
+		HO.Print("unknown command '" .. cmd .. "' — /ho help")
 	end
 end

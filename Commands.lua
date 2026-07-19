@@ -475,3 +475,59 @@ HO.commands["tank"] = function(rest)
 	local isTank = HO.Plan.ToggleTank(target)
 	HO.Print(target .. (isTank and " is now flagged as tank" or " is no longer flagged as tank"))
 end
+
+-- help ------------------------------------------------------------------------
+
+-- diagnostic/experimental commands, kept out of the default /ho help listing
+local DEBUG = {
+	spells = true, roster = true, dump = true, log = true, getlog = true,
+	trace = true, ping = true, sync = true, peers = true, openedit = true,
+	bar = true,
+}
+
+-- one very short line per command; player-facing and debug alike
+local DESC = {
+	-- player-facing
+	auto = "compute blessing assignments",
+	rebuff = "toggle pre-pull force rebuff",
+	nosalv = "toggle no-Salvation encounter mode",
+	plan = "manage stored roster plans",
+	assign = "set a class blessing assignment",
+	override = "set a per-player blessing override",
+	tank = "toggle a member's tank flag",
+	spec = "tag a member's spec for the planner",
+	win = "toggle the assignment window",
+	opt = "open the options panel",
+	report = "announce missing blessings to the group",
+	help = "show this help (/ho help debug for more)",
+	-- debug
+	spells = "list known blessings and ranks",
+	roster = "dump the scanned roster",
+	dump = "snapshot state into SavedVariables",
+	log = "show or clear the debug log",
+	getlog = "pull a member's log to you",
+	trace = "toggle comm message logging",
+	ping = "ping other HolyOrders paladins",
+	sync = "request a sync from the group",
+	peers = "list known HolyOrders paladins",
+	openedit = "toggle letting others edit your row",
+	bar = "control the cast bar (lock/show/grow)",
+}
+
+HO.commands["help"] = function(rest)
+	local debug = (rest or ""):lower():match("^(%S*)") == "debug"
+	local names = {}
+	for name in pairs(HO.commands) do
+		if (DEBUG[name] and true or false) == debug then
+			table.insert(names, name)
+		end
+	end
+	table.sort(names)
+	HO.Print("v" .. HO.VERSION .. (debug and " — debug commands:" or " — commands:"))
+	for _, name in ipairs(names) do
+		HO.PrintLine("/ho " .. name .. (DESC[name] and (" — " .. DESC[name]) or ""))
+	end
+	if not debug then
+		HO.PrintLine("debug commands: /ho help debug")
+	end
+end

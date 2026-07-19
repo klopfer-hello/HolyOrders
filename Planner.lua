@@ -130,15 +130,16 @@ function Planner.Run()
 	wipe(plan.class)
 
 	-- class composition (players only; pets are cast-engine targets)
-	local classes = {} -- [classToken] = { members, tanks }
+	local classes = {} -- [classToken] = { members, tanks, list }
 	for _, entry in ipairs(units) do
 		if not entry.isPet and entry.class and entry.name then
 			local info = classes[entry.class]
 			if not info then
-				info = { members = 0, tanks = 0 }
+				info = { members = 0, tanks = 0, list = {} }
 				classes[entry.class] = info
 			end
 			info.members = info.members + 1
+			table.insert(info.list, entry)
 			if IsTankEntry(plan, entry) then
 				info.tanks = info.tanks + 1
 			end
@@ -149,7 +150,29 @@ function Planner.Run()
 	local assigned = {} -- [pallyName] = blessingID
 	if solo and isRaid then
 		assigned[pallys[1]] = SALVATION -- solo raid mode: Salvation except tanks
-	elseif not solo then
+	elseif solo then
+		-- solo party: one class assignment per class (majority preference of
+		-- its members; game rule allows different blessings per target), with
+		-- overrides only for members who deviate (added in step 4)
+		for classToken, info in pairs(classes) do
+			local counts = {}
+			for _, entry in ipairs(info.list) do
+				local pref = Planner.ResolvePreference(entry.name, classToken, IsTankEntry(plan, entry))[1]
+				if pref and Available(pallys[1], pref) and HO.Data.IsEligible(classToken, pref, false) then
+					counts[pref] = (counts[pref] or 0) + 1
+				end
+			end
+			local best, bestCount
+			for id, count in pairs(counts) do
+				if not bestCount or count > bestCount or (count == bestCount and id < best) then
+					best, bestCount = id, count
+				end
+			end
+			if best then
+				HO.Plan.SetClassAssignment(pallys[1], classToken, best, "auto")
+			end
+		end
+	else
 		local coverage = isRaid and RAID_COVERAGE or PARTY_COVERAGE
 		local used = {}
 		for i = 1, math.min(#pallys, #coverage) do
@@ -169,7 +192,6 @@ function Planner.Run()
 			end
 		end
 	end
-	-- solo party: no class-wide coverage; per-member singles below
 
 	-- 2) class assignments from the coverage
 	for classToken, info in pairs(classes) do
@@ -188,16 +210,25 @@ function Planner.Run()
 		end
 	end
 
-	-- 3) tanks: if no greater Kings covers them, give them Kings singles
-	local kingsCovered = false
-	for _, blessing in pairs(assigned) do
-		if blessing == KINGS then
-			kingsCovered = true
+	-- which blessings actually reach each class (from ALL paladins' rows)
+	local receivedByClass = {}
+	for _, pally in ipairs(pallys) do
+		local rows = plan.class[pally]
+		if rows then
+			for classToken, a in pairs(rows) do
+				receivedByClass[classToken] = receivedByClass[classToken] or {}
+				receivedByClass[classToken][a.id] = true
+			end
 		end
 	end
+	local function ClassReceives(classToken, blessingID)
+		return receivedByClass[classToken] and receivedByClass[classToken][blessingID] or false
+	end
+
+	-- 3) tanks: if no Kings reaches their class, give them Kings singles
 	for _, entry in ipairs(units) do
 		if not entry.isPet and entry.name and IsTankEntry(plan, entry) then
-			if not kingsCovered and not HasOverrideFor(plan, entry.name) then
+			if not ClassReceives(entry.class, KINGS) and not HasOverrideFor(plan, entry.name) then
 				for _, pally in ipairs(pallys) do
 					if Available(pally, KINGS) then
 						AddAutoOverride(plan, pally, entry.name, KINGS)
@@ -213,13 +244,7 @@ function Planner.Run()
 		if not entry.isPet and entry.name and not IsTankEntry(plan, entry) then
 			local pref = Planner.ResolvePreference(entry.name, entry.class, false)[1]
 			if pref and HO.Data.IsEligible(entry.class, pref, false) then
-				local receives = false
-				for _, blessing in pairs(assigned) do
-					if blessing == pref then
-						receives = true
-						break
-					end
-				end
+				local receives = ClassReceives(entry.class, pref)
 				if solo and isRaid then
 					receives = true -- the Salvation plan stays intact for non-tanks
 				end
@@ -247,7 +272,18 @@ function Planner.Run()
 	local parts = {}
 	for _, pally in ipairs(pallys) do
 		local blessing = assigned[pally]
-		local label = blessing and (HO.Data.blessings[blessing].name or HO.Data.blessings[blessing].key) or "singles only"
+		local label
+		if blessing then
+			label = HO.Data.blessings[blessing].name or HO.Data.blessings[blessing].key
+		else
+			local n = 0
+			if plan.class[pally] then
+				for _ in pairs(plan.class[pally]) do
+					n = n + 1
+				end
+			end
+			label = n > 0 and (n .. " class singles") or "nothing"
+		end
 		table.insert(parts, pally .. " > " .. label)
 	end
 	local summary = table.concat(parts, "; ")

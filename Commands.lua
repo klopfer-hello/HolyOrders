@@ -265,6 +265,33 @@ HO.commands["win"] = function()
 	HO.Window.Toggle()
 end
 
+-- sync ------------------------------------------------------------------------
+
+HO.commands["sync"] = function()
+	HO.Comm.SendHello()
+	HO.Comm.RequestSync()
+	HO.Print("sync requested from the group")
+end
+
+HO.commands["peers"] = function()
+	local n = 0
+	for name, peer in pairs(HO.Comm.peers) do
+		n = n + 1
+		HO.PrintLine(name .. " — v" .. tostring(peer.version) .. (peer.openEdit and " (open edit)" or ""))
+	end
+	HO.Print(n .. " HolyOrders paladin(s) known" .. (n == 0 and " — none seen yet (are they in your group?)" or ""))
+end
+
+HO.commands["openedit"] = function()
+	HO.db.options.openEdit = not HO.db.options.openEdit
+	HO.Print("open edit " .. (HO.db.options.openEdit and "ENABLED — any HolyOrders paladin may edit your row" or "disabled"))
+	HO.Comm.SendHello()
+end
+
+HO.commands["ping"] = function()
+	HO.Comm.Ping()
+end
+
 -- auto-planner ----------------------------------------------------------------
 
 HO.commands["auto"] = function()

@@ -63,8 +63,12 @@ local function Available(pallyName, blessingID)
 		local blessing = HO.Data.blessings[blessingID]
 		return (blessing and blessing.known) or false
 	end
-	-- remote capabilities arrive with the sync milestone; until then assume
-	-- everything except talent-gated Sanctuary
+	-- peers broadcast their capabilities via HELLO
+	local peer = HO.Comm and HO.Comm.peers[pallyName]
+	if peer and peer.caps and peer.caps[blessingID] then
+		return peer.caps[blessingID].known
+	end
+	-- no HolyOrders on that paladin: assume everything but talent-gated Sanctuary
 	return blessingID ~= SANCTUARY
 end
 Planner.IsAvailable = Available
@@ -72,6 +76,10 @@ Planner.IsAvailable = Available
 local function Score(pallyName, blessingID)
 	if pallyName == HO.FullName("player") then
 		return HO.Talents.ranks[blessingID] or 0
+	end
+	local peer = HO.Comm and HO.Comm.peers[pallyName]
+	if peer and peer.caps and peer.caps[blessingID] then
+		return peer.caps[blessingID].talent
 	end
 	return 0
 end
@@ -125,6 +133,12 @@ function Planner.Run()
 	local units = HO.Roster.units
 	local isRaid = IsInRaid()
 	local solo = (#pallys == 1)
+
+	-- bulk edit: individual SETs are suppressed; the caller broadcasts the
+	-- finished plan atomically (PLANAPPLY) instead
+	if HO.Comm then
+		HO.Comm.suspended = true
+	end
 
 	ClearAutoOverrides(plan)
 	wipe(plan.class)
@@ -288,5 +302,12 @@ function Planner.Run()
 	end
 	local summary = table.concat(parts, "; ")
 	HO.Log("planner", string.format("run: raid=%s pallys=%d autoOverrides=%d | %s", tostring(isRaid), #pallys, overrideCount, summary))
+
+	if HO.Comm then
+		HO.Comm.suspended = false
+		if HO.Comm.SendPlanApply() then
+			HO.Print("plan broadcast to the group")
+		end
+	end
 	return true, summary
 end

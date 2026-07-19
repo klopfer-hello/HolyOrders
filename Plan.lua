@@ -90,6 +90,9 @@ function Plan.SetClassAssignment(paladin, classToken, blessingID, mode)
 		end
 		plan.class[paladin][classToken] = { id = blessingID, mode = mode or "auto" }
 	end
+	if HO.Comm then
+		HO.Comm.OnClassEdited(paladin, classToken)
+	end
 end
 
 function Plan.SetPlayerOverride(paladin, targetName, blessingID)
@@ -100,16 +103,25 @@ function Plan.SetPlayerOverride(paladin, targetName, blessingID)
 	else
 		plan.player[paladin][targetName] = blessingID
 	end
+	if HO.Comm then
+		HO.Comm.OnOverrideEdited(paladin, targetName)
+	end
 end
 
 function Plan.ToggleTank(name)
 	local plan = Plan.Active()
+	local flagged
 	if plan.tanks[name] then
 		plan.tanks[name] = nil
-		return false
+		flagged = false
+	else
+		plan.tanks[name] = true
+		flagged = true
 	end
-	plan.tanks[name] = true
-	return true
+	if HO.Comm then
+		HO.Comm.OnTankToggled(name, flagged)
+	end
+	return flagged
 end
 
 -- storage --------------------------------------------------------------------
@@ -182,6 +194,10 @@ local function OnRosterChanged()
 		Plan.suggestion = nil
 		HO.Log("plan", "auto-applied stored plan for " .. sig)
 		HO.Print("stored plan applied for this paladin roster" .. (stored.meta.name and (" ('" .. stored.meta.name .. "')") or ""))
+		-- a lead broadcasts the restored plan so the raid converges on it
+		if HO.Comm and HO.Comm.SendPlanApply() then
+			HO.Print("plan broadcast to the group")
+		end
 		return
 	end
 	-- no exact match: keep the current active plan, look for a similar one
@@ -215,6 +231,9 @@ function Plan.ApplySuggestion()
 	HO.db.activeSignature = Plan.CurrentSignature()
 	stored.meta.lastUsed = time()
 	Plan.suggestion = nil
+	if HO.Comm and HO.Comm.SendPlanApply() then
+		HO.Print("plan broadcast to the group")
+	end
 	return true
 end
 

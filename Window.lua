@@ -70,7 +70,19 @@ end
 
 -- cell click handlers ---------------------------------------------------------
 
+local function MayEdit(pally)
+	local editor = HO.FullName("player")
+	if HO.Comm and editor and not HO.Comm.CanEdit(editor, pally) then
+		HO.Print("no permission to edit " .. pally .. "'s assignments (need lead/assist or their open-edit)")
+		return false
+	end
+	return true
+end
+
 local function ClassCellClick(cell, mouseBtn)
+	if not MayEdit(cell.pally) then
+		return
+	end
 	local plan = HO.Plan.Active()
 	local cur = plan.class[cell.pally] and plan.class[cell.pally][cell.classToken]
 	if mouseBtn == "RightButton" then
@@ -88,6 +100,9 @@ local function ClassCellClick(cell, mouseBtn)
 end
 
 local function MemberCellClick(cell, mouseBtn)
+	if not MayEdit(cell.pally) then
+		return
+	end
 	local plan = HO.Plan.Active()
 	local cur = plan.player[cell.pally] and plan.player[cell.pally][cell.memberName]
 	if mouseBtn == "RightButton" then

@@ -33,6 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that re-casts every assigned buff older than 2 minutes; ends automatically
   when everything is fresh. Handle glows red while active.
 - Addon-list icon (`IconTexture`) and README banner artwork.
+- Multi-paladin sync: revision-numbered per-paladin rows, capture-at-send
+  debounced edits, explicit clear broadcasts, atomic plan application
+  (auto-plan and stored-plan loads broadcast as one unit), capability
+  exchange (known blessings + talents feed the auto-planner), symmetric
+  edit permissions (self / lead / open-edit). Commands: `/ho sync`,
+  `/ho peers`, `/ho openedit`, `/ho ping`.
 - Assignment window (`/ho win`): class-grid layout — rows are classes
   (expandable to members), columns are paladins; click cycles blessings,
   right-click clears, shift-click cycles cast mode; member rows edit

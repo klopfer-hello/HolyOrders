@@ -261,6 +261,10 @@ HO.commands["rebuff"] = function()
 	HO.Bar.ToggleForceRebuff()
 end
 
+HO.commands["win"] = function()
+	HO.Window.Toggle()
+end
+
 -- auto-planner ----------------------------------------------------------------
 
 HO.commands["auto"] = function()

@@ -67,6 +67,7 @@ local function Available(pallyName, blessingID)
 	-- everything except talent-gated Sanctuary
 	return blessingID ~= SANCTUARY
 end
+Planner.IsAvailable = Available
 
 local function Score(pallyName, blessingID)
 	if pallyName == HO.FullName("player") then

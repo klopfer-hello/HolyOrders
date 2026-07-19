@@ -33,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that re-casts every assigned buff older than 2 minutes; ends automatically
   when everything is fresh. Handle glows red while active.
 - Addon-list icon (`IconTexture`) and README banner artwork.
+- Assignment window (`/ho win`): class-grid layout — rows are classes
+  (expandable to members), columns are paladins; click cycles blessings,
+  right-click clears, shift-click cycles cast mode; member rows edit
+  overrides, tank flags (right-click name) and spec tags (click name).
+  Auto/Rebuff/Save header buttons; ESC closes.
 
 ### Fixed
 - Unicode arrows replaced with ASCII in chat output (rendered as boxes).

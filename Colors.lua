@@ -38,3 +38,13 @@ function HO.Colors.rgb(key, alpha)
 	end
 	return c[1], c[2], c[3], alpha
 end
+
+-- palette entry as a 6-digit hex string for inline chat/fontstring colour escapes
+-- (|cffRRGGBB...|r): HO.Colors.hex("green") -> "6fe046"
+function HO.Colors.hex(key)
+	local c = HO.Colors[key]
+	if not c then
+		return "ffffff"
+	end
+	return string.format("%02x%02x%02x", math.floor(c[1] * 255 + 0.5), math.floor(c[2] * 255 + 0.5), math.floor(c[3] * 255 + 0.5))
+end

@@ -10,6 +10,7 @@
 HolyOrders.lua
 Locale.lua
 Colors.lua
+Skin.lua
 Data.lua
 Talents.lua
 Roster.lua

@@ -85,6 +85,20 @@ function Roster.Rebuild()
 	Notify()
 end
 
+-- case-insensitive lookup by full or realm-less name; returns fullName, entry
+function Roster.Resolve(input)
+	if not input or input == "" then
+		return nil
+	end
+	local needle = input:lower()
+	for name, entry in pairs(Roster.byName) do
+		if name:lower() == needle or name:match("^([^%-]+)"):lower() == needle then
+			return name, entry
+		end
+	end
+	return nil
+end
+
 -- sorted realm-qualified names of all paladins (roster signature input)
 function Roster.Paladins()
 	local names = {}

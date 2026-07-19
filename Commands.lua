@@ -78,7 +78,7 @@ HO.commands["plan"] = function(rest)
 		for paladin, classes in pairs(plan.class) do
 			HO.PrintLine(paladin .. ":")
 			for classToken, a in pairs(classes) do
-				HO.PrintLine(string.format("   %s → %s (%s)", classToken, BlessingLabel(a.id), a.mode))
+				HO.PrintLine(string.format("   %s > %s (%s)", classToken, BlessingLabel(a.id), a.mode))
 			end
 		end
 		for paladin, targets in pairs(plan.player) do
@@ -149,7 +149,7 @@ HO.commands["assign"] = function(rest)
 	if id == 0 then
 		HO.Print("cleared " .. classToken)
 	else
-		HO.Print(classToken .. " → " .. BlessingLabel(id))
+		HO.Print(classToken .. " > " .. BlessingLabel(id))
 	end
 end
 
@@ -160,18 +160,10 @@ HO.commands["override"] = function(rest)
 		HO.Print("usage: /ho override <playerName> <blessing 0-" .. HO.Data.NUM_BLESSINGS .. ">  (0 clears)")
 		return
 	end
-	local entry = HO.Roster.byName[target]
+	local entry
+	target, entry = HO.Roster.Resolve(target)
 	if not entry then
-		-- allow realm-less input by matching the name part
-		for name, e in pairs(HO.Roster.byName) do
-			if name:match("^([^%-]+)") == target then
-				target, entry = name, e
-				break
-			end
-		end
-	end
-	if not entry then
-		HO.Print("'" .. target .. "' is not in the roster")
+		HO.Print("target is not in the roster")
 		return
 	end
 	HO.Plan.SetPlayerOverride(HO.FullName("player"), target, id)
@@ -201,14 +193,9 @@ HO.commands["spec"] = function(rest)
 		return
 	end
 	local entry
-	for name, e in pairs(HO.Roster.byName) do
-		if name == target or name:match("^([^%-]+)") == target then
-			target, entry = name, e
-			break
-		end
-	end
+	target, entry = HO.Roster.Resolve(target)
 	if not entry then
-		HO.Print("'" .. target .. "' is not in the roster")
+		HO.Print("target is not in the roster")
 		return
 	end
 	local valid = HO.Planner.ValidSpecs(entry.class)
@@ -242,11 +229,11 @@ HO.commands["tank"] = function(rest)
 		HO.Print("usage: /ho tank <playerName>  (toggles the tank flag)")
 		return
 	end
-	for name in pairs(HO.Roster.byName) do
-		if name == target or name:match("^([^%-]+)") == target then
-			target = name
-			break
-		end
+	local entry
+	target, entry = HO.Roster.Resolve(target)
+	if not entry then
+		HO.Print("target is not in the roster")
+		return
 	end
 	local isTank = HO.Plan.ToggleTank(target)
 	HO.Print(target .. (isTank and " is now flagged as tank" or " is no longer flagged as tank"))

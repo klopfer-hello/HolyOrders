@@ -239,7 +239,7 @@ function Planner.Run()
 	for _, pally in ipairs(pallys) do
 		local blessing = assigned[pally]
 		local label = blessing and (HO.Data.blessings[blessing].name or HO.Data.blessings[blessing].key) or "singles only"
-		table.insert(parts, pally .. " → " .. label)
+		table.insert(parts, pally .. " > " .. label)
 	end
 	return true, table.concat(parts, "; ")
 end

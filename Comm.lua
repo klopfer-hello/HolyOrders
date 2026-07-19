@@ -8,7 +8,9 @@ local Comm = {}
 HO.Comm = Comm
 
 local PREFIX = "HolyOrders"
-local PROTO = "3" -- v3: caps carry spell ranks for buff-strength scoring
+-- v4: PLANAPPLY is an authoritative snapshot (tank list in its own PT messages,
+-- atomic PE apply), spec-tag overlay sync (ST). Breaking wire change from v3.
+local PROTO = "4"
 local SET_DELAY = 1.0
 local HELLO_DELAY = 2.0
 local MAX_MSG = 250 -- WoW addon messages cap at 255 bytes
@@ -25,9 +27,14 @@ local CODE_MODE = { a = "auto", g = "greater", n = "normal" }
 
 Comm.peers = {} -- [fullName] = { version, openEdit, caps = {[id]={known,greater,talent}}, greeted }
 Comm.suspended = false -- true while the planner bulk-edits (PLANAPPLY follows)
+Comm.specSync = {} -- [fullName] = spec tag, synced overlay (session only, not saved)
 
 local me -- own full name, set on login
-local planBuffer = nil -- incoming PLANAPPLY rows, buffered until PE
+local planBuffer = nil -- incoming PLANAPPLY buffer { sender, rows={}, tanks={} }, applied atomically at PE
+
+local function IsPaladin()
+	return select(2, UnitClass("player")) == "PALADIN"
+end
 
 -- transport -------------------------------------------------------------------
 
@@ -38,6 +45,88 @@ local function Channel()
 		return "PARTY"
 	end
 	return nil
+end
+
+-- low-level rate limiter: classic clients silently drop addon-message bursts,
+-- so a token bucket paces us and a FIFO queue (drained by a ticker) preserves
+-- order once anything is queued
+local BURST = 8 -- bucket capacity
+local REFILL = 4 -- tokens per second
+local tokens = BURST
+local lastRefill = nil
+local sendQueue = {} -- FIFO of { wire, channel, target, msgType }
+local drainTicker = nil
+
+local function ChannelAlive(channel, target)
+	if channel == "WHISPER" then
+		return target ~= nil
+	elseif channel == "RAID" then
+		return IsInRaid()
+	elseif channel == "PARTY" then
+		return IsInGroup()
+	end
+	return true
+end
+
+local function Refill()
+	local now = GetTime()
+	if not lastRefill then
+		lastRefill = now
+		return
+	end
+	local elapsed = now - lastRefill
+	if elapsed > 0 then
+		tokens = math.min(BURST, tokens + elapsed * REFILL)
+		lastRefill = now
+	end
+end
+
+local function DrainTick()
+	Refill()
+	while sendQueue[1] and tokens >= 1 do
+		local item = table.remove(sendQueue, 1)
+		if ChannelAlive(item.channel, item.target) then
+			tokens = tokens - 1
+			C_ChatInfo.SendAddonMessage(PREFIX, item.wire, item.channel, item.target)
+		else
+			HO.Log("comm", "dropped queued " .. tostring(item.msgType) .. " (channel gone)")
+		end
+	end
+	if not sendQueue[1] and drainTicker then
+		drainTicker:Cancel()
+		drainTicker = nil
+	end
+end
+
+local function Throttle(wire, channel, target, msgType)
+	-- once anything is queued everything queues behind it, so order never breaks
+	if #sendQueue == 0 then
+		Refill()
+		if tokens >= 1 then
+			if ChannelAlive(channel, target) then
+				tokens = tokens - 1
+				C_ChatInfo.SendAddonMessage(PREFIX, wire, channel, target)
+			end
+			return
+		end
+	end
+	sendQueue[#sendQueue + 1] = { wire = wire, channel = channel, target = target, msgType = msgType }
+	if not drainTicker then
+		drainTicker = C_Timer.NewTicker(1 / REFILL, DrainTick)
+	end
+end
+
+-- drop still-queued outgoing messages of a type (used when a snapshot
+-- supersedes pre-snapshot single-message edits)
+local function CancelQueued(msgType)
+	local i = 1
+	while sendQueue[i] do
+		if sendQueue[i].msgType == msgType then
+			table.remove(sendQueue, i)
+		else
+			i = i + 1
+		end
+	end
 end
 
 local function Send(msg, channel, target)
@@ -53,7 +142,7 @@ local function Send(msg, channel, target)
 		HO.Log("comm", "OVERSIZED message dropped (" .. #wire .. "b): " .. wire:sub(1, 60))
 		return
 	end
-	C_ChatInfo.SendAddonMessage(PREFIX, wire, channel, target)
+	Throttle(wire, channel, target, msg:match("^(%u+)"))
 end
 
 -- debounced sends: one pending timer per key, payload captured at queue time
@@ -81,8 +170,10 @@ function Comm.CanEdit(editor, owner)
 	if owner == me then
 		return HO.db.options.openEdit or false
 	end
+	-- honor a peer's openEdit only while that peer is still in the group roster
+	-- (a leaver's stale permission must not survive)
 	local peer = Comm.peers[owner]
-	return (peer and peer.openEdit) or false
+	return (peer and peer.openEdit and HO.Roster.byName[owner] and true) or false
 end
 
 function Comm.CanBulk(editor)
@@ -107,6 +198,20 @@ end
 local function Revs(plan)
 	plan.rev = plan.rev or {}
 	return plan.rev
+end
+
+-- a revision off the wire must be a finite, non-negative integer below 1e9;
+-- anything else (nan/inf/float/garbage) is rejected so it can never poison the
+-- monotonic rev comparisons
+local function ValidRev(x)
+	x = tonumber(x)
+	if not x then
+		return nil
+	end
+	if x ~= x or x < 0 or x >= 1e9 or math.floor(x) ~= x then
+		return nil
+	end
+	return x
 end
 
 local function BumpRev(owner)
@@ -148,27 +253,32 @@ local function SerializeRow(owner)
 end
 
 -- applies a serialized row if permitted and newer; direct table writes only
--- (never through Plan.Set*, which would echo back into Comm)
-local function ApplyRow(payload, sender)
-	local owner, rev, classCsv, ovCsv = strsplit(";", payload)
-	rev = tonumber(rev)
-	if not owner or not rev then
+-- (never through Plan.Set*, which would echo back into Comm).
+-- force = true is used by the PLANAPPLY snapshot: bulk permission is already
+-- checked, so every row is adopted unconditionally (rev too, even if lower).
+local function ApplyRow(payload, sender, force)
+	local owner, revStr, classCsv, ovCsv = strsplit(";", payload)
+	if not owner then
 		return
 	end
-	if not Comm.CanEdit(sender, owner) then
+	local rev = ValidRev(revStr)
+	if not rev then
+		HO.Log("comm", "dropped row for " .. tostring(owner) .. " from " .. sender .. ": invalid rev " .. tostring(revStr))
+		return
+	end
+	if not force and not Comm.CanEdit(sender, owner) then
 		HO.Log("comm", "rejected row for " .. owner .. " from " .. sender)
 		return
 	end
 	local plan = HO.Plan.Active()
 	local localRev = Revs(plan)[owner] or 0
-	-- the owner's own state wins ties (authoritative for their row);
-	-- everyone else needs a strictly newer revision
-	if sender == owner then
-		if rev < localRev then
+	if not force then
+		-- the owner is authoritative for their own row: accept it unconditionally
+		-- and adopt its rev as sent (heals an editor who forked a foreign row via
+		-- a lost send). Everyone else needs a strictly newer revision.
+		if sender ~= owner and rev <= localRev then
 			return
 		end
-	elseif rev <= localRev then
-		return
 	end
 	local class = {}
 	if classCsv and classCsv ~= "" then
@@ -205,13 +315,36 @@ function Comm.SendFull(target)
 	Send("F:" .. SerializeRow(me), target and "WHISPER" or nil, target)
 end
 
--- bump and broadcast only the player's own row (always permitted)
+-- bump and broadcast only the player's own row (always permitted).
+-- non-paladin clients hold no blessing row and never announce one.
 function Comm.BroadcastOwnRow()
-	if not me then
+	if not me or not IsPaladin() then
 		return
 	end
 	BumpRev(me)
 	Comm.SendFull()
+end
+
+-- spec-tag overlay: share a member's tag so every client computes the same
+-- tank set (divergent local inspect results otherwise split the Salvation plan)
+function Comm.SendSpecTag(name, tag)
+	if not me or not name or not tag or tag == "" then
+		return
+	end
+	Send("ST:" .. name .. ";" .. tag)
+end
+
+-- piggybacked onto a greet: only "protection" tags matter for correctness,
+-- so a new peer learns exactly the tank-relevant tags we hold
+function Comm.SendKnownSpecTags(channel, target)
+	if not me or not HO.db then
+		return
+	end
+	for name, tag in pairs(HO.db.specCache) do
+		if tag == "protection" then
+			Send("ST:" .. name .. ";" .. tag, channel, target)
+		end
+	end
 end
 
 -- called by Plan.Set* after every local edit (unless suspended for a bulk op)
@@ -241,19 +374,54 @@ function Comm.OnTankToggled(name, flagged)
 	if Comm.suspended or not me then
 		return
 	end
-	QueueSend("T:" .. name, "T:" .. name .. ";" .. (flagged and "1" or "0"))
+	-- send immediately: tank clicks are rare, and a debounce window is exactly
+	-- what let a racing PLANAPPLY reverse the click
+	Send("T:" .. name .. ";" .. (flagged and "1" or "0"))
 end
 
--- atomic plan broadcast: every row re-revisioned and sent, then tanks
-function Comm.SendPlanApply()
+-- emit a name list as one or more PT messages, each kept under the size cap by
+-- splitting only on name boundaries
+local function SendTankChunks(names)
+	local budget = MAX_MSG - #PROTO - #(":PT:") -- payload bytes left after the header
+	local chunk, len = {}, 0
+	local function flush()
+		if #chunk > 0 then
+			Send("PT:" .. table.concat(chunk, "|"))
+			chunk, len = {}, 0
+		end
+	end
+	for _, name in ipairs(names) do
+		local add = (#chunk > 0 and 1 or 0) + #name -- separator + name
+		if #chunk > 0 and len + add > budget then
+			flush()
+			add = #name
+		end
+		chunk[#chunk + 1] = name
+		len = len + add
+	end
+	flush()
+end
+
+-- authoritative plan snapshot: a row for EVERY paladin in the roster (empty
+-- rows serialize as explicit clears so a de-assigned paladin's stale row cannot
+-- resurrect), then the tank list as its own PT stream, then an empty PE.
+-- override = true bypasses the CanBulk gate when authority comes from elsewhere
+-- (a remote lead's revert request routed to the snapshot holder).
+function Comm.SendPlanApply(override)
 	if not me or not Channel() then
 		return false
 	end
-	if not Comm.CanBulk(me) then
+	if not override and not Comm.CanBulk(me) then
 		return false
 	end
 	local plan = HO.Plan.Active()
 	local owners, seen = {}, {}
+	for _, name in ipairs(HO.Roster.Paladins()) do
+		if not seen[name] then
+			seen[name] = true
+			table.insert(owners, name)
+		end
+	end
 	for owner in pairs(plan.class) do
 		if not seen[owner] then
 			seen[owner] = true
@@ -267,17 +435,30 @@ function Comm.SendPlanApply()
 		end
 	end
 	table.sort(owners)
+	-- prune tanks no longer in the roster before broadcasting
+	local tanks = {}
+	for name in pairs(plan.tanks) do
+		if HO.Roster.byName[name] then
+			table.insert(tanks, name)
+		else
+			plan.tanks[name] = nil
+		end
+	end
+	table.sort(tanks)
 	Send("PS:" .. #owners)
 	for _, owner in ipairs(owners) do
 		BumpRev(owner)
-		Send("PR:" .. SerializeRow(owner))
+		local row = "PR:" .. SerializeRow(owner)
+		-- never silently drop part of a snapshot: an oversize single row is
+		-- logged and skipped, but the burst still completes cleanly
+		if #PROTO + 1 + #row > MAX_MSG then
+			HO.Log("comm", "PLANAPPLY row for " .. owner .. " exceeds size cap — skipped")
+		else
+			Send(row)
+		end
 	end
-	local tanks = {}
-	for name in pairs(plan.tanks) do
-		table.insert(tanks, name)
-	end
-	table.sort(tanks)
-	Send("PE:" .. table.concat(tanks, "|"))
+	SendTankChunks(tanks)
+	Send("PE:" .. #owners)
 	HO.Log("comm", "plan apply sent: " .. #owners .. " rows")
 	return true
 end
@@ -311,17 +492,22 @@ handlers["H"] = function(sender, payload)
 	end
 	Comm.peers[sender] = peer
 	HO.Log("comm", "hello from " .. sender .. " v" .. tostring(version))
-	-- greet back once and share our state directly with the newcomer
-	if not peer.greeted then
+	-- greet back once and share our state directly with the newcomer — but only
+	-- if we are a paladin, so non-paladin clients never announce a row
+	if not peer.greeted and IsPaladin() then
 		peer.greeted = true
 		C_Timer.After(math.random() * HELLO_DELAY, function()
 			Comm.SendHello("WHISPER", sender)
 			Comm.SendFull(sender)
+			Comm.SendKnownSpecTags("WHISPER", sender)
 		end)
 	end
 end
 
 handlers["R"] = function(sender)
+	if not IsPaladin() then
+		return -- non-paladins hold no row to share
+	end
 	C_Timer.After(math.random() * HELLO_DELAY, function()
 		Comm.SendFull(sender)
 	end)
@@ -334,18 +520,29 @@ handlers["F"] = function(sender, payload)
 end
 
 handlers["SC"] = function(sender, payload)
-	local owner, rev, classCode, id, modeCode = strsplit(";", payload)
+	local owner, revStr, classCode, id, modeCode = strsplit(";", payload)
 	local classToken = classCode and CODE_CLASS[classCode]
 	local mode = modeCode and CODE_MODE[modeCode] or "auto"
-	rev, id = tonumber(rev), tonumber(id)
-	if not owner or not rev or not id or not classToken then
+	local rev = ValidRev(revStr)
+	id = tonumber(id)
+	if not owner or not id or not classToken then
+		return
+	end
+	if not rev then
+		HO.Log("comm", "dropped SC for " .. owner .. " from " .. sender .. ": invalid rev " .. tostring(revStr))
 		return
 	end
 	if not Comm.CanEdit(sender, owner) then
 		return
 	end
 	local plan = HO.Plan.Active()
-	if rev <= (Revs(plan)[owner] or 0) and sender ~= owner then
+	local localRev = Revs(plan)[owner] or 0
+	-- owner wins ties (rev == localRev accepted); everyone else needs strictly newer
+	if sender == owner then
+		if rev < localRev then
+			return
+		end
+	elseif rev <= localRev then
 		return
 	end
 	plan.class[owner] = plan.class[owner] or {}
@@ -359,16 +556,27 @@ handlers["SC"] = function(sender, payload)
 end
 
 handlers["SP"] = function(sender, payload)
-	local owner, rev, target, id = strsplit(";", payload)
-	rev, id = tonumber(rev), tonumber(id)
-	if not owner or not rev or not id then
+	local owner, revStr, target, id = strsplit(";", payload)
+	local rev = ValidRev(revStr)
+	id = tonumber(id)
+	if not owner or not id or not target then
+		return
+	end
+	if not rev then
+		HO.Log("comm", "dropped SP for " .. owner .. " from " .. sender .. ": invalid rev " .. tostring(revStr))
 		return
 	end
 	if not Comm.CanEdit(sender, owner) then
 		return
 	end
 	local plan = HO.Plan.Active()
-	if rev <= (Revs(plan)[owner] or 0) and sender ~= owner then
+	local localRev = Revs(plan)[owner] or 0
+	-- owner wins ties; everyone else needs strictly newer (mirrors ApplyRow)
+	if sender == owner then
+		if rev < localRev then
+			return
+		end
+	elseif rev <= localRev then
 		return
 	end
 	plan.player[owner] = plan.player[owner] or {}
@@ -382,6 +590,9 @@ handlers["T"] = function(sender, payload)
 	if not name then
 		return
 	end
+	if not HO.Roster.byName[name] then
+		return -- only flag members currently in the roster
+	end
 	local entry = HO.Roster.byName[sender]
 	local allowed = (sender == name) or (entry and (entry.rank or 0) > 0)
 	if not allowed then
@@ -393,8 +604,10 @@ handlers["T"] = function(sender, payload)
 end
 
 handlers["PS"] = function(sender)
+	-- start (or restart) a snapshot buffer for this sender, discarding any
+	-- half-received one from the same sender
 	if Comm.CanBulk(sender) then
-		planBuffer = { sender = sender, rows = {} }
+		planBuffer = { sender = sender, rows = {}, tanks = {} }
 	end
 end
 
@@ -404,25 +617,43 @@ handlers["PR"] = function(sender, payload)
 	end
 end
 
-handlers["PE"] = function(sender, payload)
+handlers["PT"] = function(sender, payload)
+	if planBuffer and planBuffer.sender == sender and payload then
+		for name in string.gmatch(payload, "[^|]+") do
+			table.insert(planBuffer.tanks, name)
+		end
+	end
+end
+
+handlers["PE"] = function(sender)
 	if not planBuffer or planBuffer.sender ~= sender then
 		return
 	end
-	local rows = planBuffer.rows
+	local rows, tanks = planBuffer.rows, planBuffer.tanks
 	planBuffer = nil
+	-- re-check bulk permission at apply time: a demotion mid-stream discards the
+	-- whole buffer rather than applying a snapshot the sender may no longer own
+	if not Comm.CanBulk(sender) then
+		HO.Log("comm", "plan apply from " .. sender .. " discarded (no bulk permission at PE)")
+		return
+	end
+	local plan = HO.Plan.Active()
 	local applied = 0
+	-- adopt every buffered row unconditionally (bulk permission was checked)
 	for _, row in ipairs(rows) do
-		if ApplyRow(row, sender) then
+		if ApplyRow(row, sender, true) then
 			applied = applied + 1
 		end
 	end
-	local plan = HO.Plan.Active()
 	wipe(plan.tanks)
-	if payload and payload ~= "" then
-		for name in string.gmatch(payload, "[^|]+") do
-			plan.tanks[name] = true
-		end
+	for _, name in ipairs(tanks) do
+		plan.tanks[name] = true
 	end
+	-- a remote bulk apply is a new clean baseline
+	plan.meta = plan.meta or {}
+	plan.meta.dirty = false
+	-- the snapshot supersedes any pre-snapshot tank click still waiting to send
+	CancelQueued("T")
 	HO.Log("comm", "plan apply from " .. sender .. ": " .. applied .. "/" .. #rows .. " rows")
 	HO.Print("blessing plan received from " .. sender)
 	RefreshUI()
@@ -435,11 +666,20 @@ end
 -- remote log pull: a group member requests our recent log; we whisper it
 -- back in chunks so it ends up in THEIR SavedVariables for offline analysis
 local LOG_SHARE_MAX = 25
+local LR_COOLDOWN = 10 -- seconds a requester must wait between log pulls
+local LL_STORE_MAX = 50 -- stored entries per sender
+local lrLast = {} -- [requester] = GetTime() of last honored request
 
 handlers["LR"] = function(sender)
 	if not HO.Roster.byName[sender] then
 		return -- group members only
 	end
+	-- rate-limit each requester so a single member cannot make us flood whispers
+	local now = GetTime()
+	if lrLast[sender] and (now - lrLast[sender]) < LR_COOLDOWN then
+		return
+	end
+	lrLast[sender] = now
 	local log = HO.db.log
 	local from = math.max(1, #log - LOG_SHARE_MAX + 1)
 	local total = #log - from + 1
@@ -471,7 +711,9 @@ handlers["LL"] = function(sender, payload)
 	HO.db.remoteLogs = HO.db.remoteLogs or {}
 	local list = HO.db.remoteLogs[sender]
 	if list then
-		table.insert(list, entry)
+		if #list < LL_STORE_MAX then
+			table.insert(list, entry)
+		end
 		if idx == total then
 			HO.Print("received " .. #list .. " log entries from " .. sender .. " — /reload writes them to SavedVariables")
 		end
@@ -500,9 +742,11 @@ handlers["NS"] = function(sender, payload)
 		HO.db.noSalvBy = nil
 		if HO.Plan.NoSalvationActive() then
 			-- we hold the snapshot; a lead asked for the revert — restore
-			-- exactly and share both the plan and the ended state
+			-- exactly and share both the plan and the ended state. The revert's
+			-- authority is the requesting lead, so broadcast even if WE were
+			-- demoted meanwhile (override the local CanBulk gate).
 			HO.Plan.SetNoSalvation(false)
-			Comm.SendPlanApply()
+			Comm.SendPlanApply(true)
 			Comm.SendNoSalv(false)
 			HO.Print("no-Salvation mode reverted (requested by " .. sender .. ")")
 		else
@@ -512,7 +756,28 @@ handlers["NS"] = function(sender, payload)
 	RefreshUI()
 end
 
+-- spec-tag overlay sync -------------------------------------------------------
+
+handlers["ST"] = function(sender, payload)
+	local name, tag = strsplit(";", payload)
+	if not name or not tag or tag == "" then
+		return
+	end
+	if Comm.specSync[name] ~= tag then
+		Comm.specSync[name] = tag
+		RefreshUI()
+	end
+end
+
 local protoWarned = {}
+
+-- mutating message types require the sender to be a current group member; when
+-- ungrouped there is no roster so all of these are rejected
+local MUTATING = {
+	SC = true, SP = true, F = true, T = true,
+	PS = true, PR = true, PT = true, PE = true,
+	NS = true, LR = true, LL = true, ST = true,
+}
 
 HO.RegisterEvent("CHAT_MSG_ADDON", function(prefix, message, _, senderFull)
 	if prefix ~= PREFIX or not me then
@@ -531,6 +796,14 @@ HO.RegisterEvent("CHAT_MSG_ADDON", function(prefix, message, _, senderFull)
 	end
 	if sender == me and msgType ~= "PING" then
 		return -- own broadcasts echo back; PING is the deliberate loopback
+	end
+	-- gate every mutating type on current group membership; out-of-group
+	-- strangers must never reach a mutating handler
+	if MUTATING[msgType] and not (sender and HO.Roster.byName[sender]) then
+		if HO.db and HO.db.options.trace then
+			HO.Log("rx", "rejected " .. msgType .. " from non-member " .. tostring(sender))
+		end
+		return
 	end
 	if HO.db and HO.db.options.trace and msgType ~= "LL" then
 		HO.Log("rx", sender .. " " .. msgType .. ":" .. tostring(payload):sub(1, 100))
@@ -551,16 +824,16 @@ local lastPallySig
 HO.RegisterEvent("PLAYER_LOGIN", function()
 	me = HO.FullName("player")
 	C_ChatInfo.RegisterAddonMessagePrefix(PREFIX)
-	local isPally = select(2, UnitClass("player")) == "PALADIN"
 	HO.Roster.OnChanged(function()
 		-- greet whenever the paladin composition changes; non-paladin
 		-- clients listen but never announce themselves as paladins
 		local sig = table.concat(HO.Roster.Paladins(), ";")
 		if sig ~= lastPallySig then
 			lastPallySig = sig
-			if isPally and Channel() then
+			if IsPaladin() and Channel() then
 				Comm.SendHello()
 				Comm.SendFull()
+				Comm.SendKnownSpecTags()
 			end
 		end
 	end)

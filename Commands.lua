@@ -449,6 +449,10 @@ HO.commands["spec"] = function(rest)
 		end
 		HO.db.specCache[target] = spec
 		HO.Print(target .. " tagged as " .. spec)
+		-- share the tag so every client computes the same tank set
+		if HO.Comm then
+			HO.Comm.SendSpecTag(target, spec)
+		end
 	end
 end
 

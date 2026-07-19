@@ -84,6 +84,10 @@ HO.RegisterEvent("INSPECT_READY", function(guid)
 		-- "other" so the member is not re-inspected forever
 		HO.db.specCache[current.name] = spec or "other"
 		HO.Log("inspect", current.name .. " inferred as " .. (spec or "other") .. " (" .. bestPoints .. "p)")
+		-- share the inference so every client computes the same tank set
+		if HO.Comm then
+			HO.Comm.SendSpecTag(current.name, HO.db.specCache[current.name])
+		end
 	end
 	ClearInspectPlayer()
 	if current.timeoutTimer then

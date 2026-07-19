@@ -315,9 +315,26 @@ local function RunCore(pallys)
 	end
 
 	-- spread auto-overrides across paladins (round-robin) so no single row
-	-- grows past the addon-message size cap; deterministic via unit order
+	-- grows past the addon-message size cap; deterministic via sorted pally order
 	local rrCursor = 0
-	local function NextCaster(blessingID)
+	local function NextCaster(blessingID, classToken)
+		-- first pass: prefer a caster who has NO class-row on the target's own
+		-- class that could go greater — a greater re-cast on that class would
+		-- wipe the single we are about to place ("normal" mode casts singles and
+		-- is safe; auto/greater may cast the class-wide greater)
+		for step = 1, #pallys do
+			local idx = ((rrCursor + step - 1) % #pallys) + 1
+			local pally = pallys[idx]
+			if Available(pally, blessingID) then
+				local rows = plan.class[pally]
+				local a = classToken and rows and rows[classToken]
+				if not (a and a.mode ~= "normal") then
+					rrCursor = idx
+					return pally
+				end
+			end
+		end
+		-- fallback: any available caster
 		for step = 1, #pallys do
 			local idx = ((rrCursor + step - 1) % #pallys) + 1
 			if Available(pallys[idx], blessingID) then
@@ -327,11 +344,22 @@ local function RunCore(pallys)
 		end
 	end
 
-	-- 3) tanks: if no Kings reaches their class, give them Kings singles
+	-- iterate a name-sorted copy so the round-robin cursor advances in the same
+	-- order on every client (party units are player/party1..4, whose order
+	-- differs per client and would otherwise diverge the caster selection)
+	local sortedUnits = {}
 	for _, entry in ipairs(units) do
+		sortedUnits[#sortedUnits + 1] = entry
+	end
+	table.sort(sortedUnits, function(a, b)
+		return (a.name or "") < (b.name or "")
+	end)
+
+	-- 3) tanks: if no Kings reaches their class, give them Kings singles
+	for _, entry in ipairs(sortedUnits) do
 		if not entry.isPet and entry.name and IsTankEntry(plan, entry) then
 			if not ClassReceives(entry.class, KINGS) and not HasOverrideFor(plan, entry.name) then
-				local caster = NextCaster(KINGS)
+				local caster = NextCaster(KINGS, entry.class)
 				if caster then
 					AddAutoOverride(plan, caster, entry.name, KINGS)
 				end
@@ -340,7 +368,7 @@ local function RunCore(pallys)
 	end
 
 	-- 4) per-member preference singles for what the coverage doesn't provide
-	for _, entry in ipairs(units) do
+	for _, entry in ipairs(sortedUnits) do
 		if not entry.isPet and entry.name and not IsTankEntry(plan, entry) then
 			local pref = Planner.ResolvePreference(entry.name, entry.class, false)[1]
 			if pref and HO.Data.IsEligible(entry.class, pref, false) then
@@ -349,7 +377,7 @@ local function RunCore(pallys)
 					receives = true -- the Salvation plan stays intact for non-tanks
 				end
 				if not receives and not HasOverrideFor(plan, entry.name) then
-					local caster = NextCaster(pref)
+					local caster = NextCaster(pref, entry.class)
 					if caster then
 						AddAutoOverride(plan, caster, entry.name, pref)
 					end

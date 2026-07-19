@@ -8,6 +8,7 @@ HO.Engine = Engine
 
 local EXPIRING_SOON = 120 -- seconds left that count as "needs a refresh"
 local MAX_BUFFS = 40
+local SALVATION = 4
 local FRESH_AGE = 120 -- force mode: buffs older than this are re-cast
 local FORCE_DURATION = 300 -- force mode safety timeout
 
@@ -140,13 +141,17 @@ function Engine.Update()
 		return
 	end
 
-	-- pool my targets by class
+	-- pool my targets by class; also note which classes contain tanks
 	local pools = {} -- [classToken] = { {entry, blessingID, isOverride}, ... }
+	local classTanks = {} -- [classToken] = true when a tank is present
 	for _, entry in ipairs(HO.Roster.units) do
 		if entry.name and entry.class and entry.unit then
+			local isTank = HO.Plan.IsTank(entry.name, entry.tankRole)
+			if isTank and not entry.isPet then
+				classTanks[entry.class] = true
+			end
 			local blessingID, isOverride = TargetBlessing(plan, me, entry)
 			if blessingID and blessingID > 0 then
-				local isTank = (plan.tanks[entry.name] or entry.tankRole) and true or false
 				-- overrides are explicit; class-wide targets pass eligibility
 				if isOverride or HO.Data.IsEligible(entry.class, blessingID, isTank) then
 					pools[entry.class] = pools[entry.class] or {}
@@ -165,6 +170,12 @@ function Engine.Update()
 			end
 		end
 		local greater = assign and UseGreater(assign, eligiblePlayers) or false
+		-- hard guard: never resolve to greater Salvation over a class that
+		-- contains a tank (the greater hits the whole class) — unless the
+		-- mode was explicitly forced to greater by the user
+		if greater and assign and assign.id == SALVATION and classTanks[classToken] and assign.mode ~= "greater" then
+			greater = false
+		end
 
 		local force = Engine.ForceActive()
 		-- class-wide targets before override/pet singles: a greater cast

@@ -124,6 +124,18 @@ function Plan.ToggleTank(name)
 	return flagged
 end
 
+-- is this character a tank for planning purposes? Manual flag, raid MAINTANK
+-- role, or an unambiguous protection spec tag (manual or inspect-inferred).
+function Plan.IsTank(name, tankRole)
+	if tankRole then
+		return true
+	end
+	if name and Plan.Active().tanks[name] then
+		return true
+	end
+	return name ~= nil and HO.db.specCache[name] == "protection"
+end
+
 -- temporary no-Salvation mode -------------------------------------------------
 -- For encounters with random aggro: swaps every Salvation assignment for a
 -- substitute and remembers the previous plan; disabling restores it exactly.

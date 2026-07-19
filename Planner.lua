@@ -120,7 +120,7 @@ end
 -- helpers ---------------------------------------------------------------------
 
 local function IsTankEntry(plan, entry)
-	return (entry.name and plan.tanks[entry.name]) or entry.tankRole or false
+	return HO.Plan.IsTank(entry.name, entry.tankRole)
 end
 
 local function HasOverrideFor(plan, target)
@@ -246,11 +246,23 @@ function Planner.Run()
 			local list = (prefs and prefs.default) or {}
 			local usedPally = {}
 			local slots = 0
+			local info = classes[classToken]
 			for _, blessingID in ipairs(list) do
 				if slots >= #pallys then
 					break
 				end
-				if HO.Data.IsEligible(classToken, blessingID, false) then
+				-- same tank rules as the raid branch: skip Salvation for
+				-- all-tank classes, singles when a tank is present
+				local mode = "auto"
+				local skip = false
+				if blessingID == SALVATION and info.tanks > 0 then
+					if info.tanks >= info.members then
+						skip = true
+					else
+						mode = "normal"
+					end
+				end
+				if not skip and HO.Data.IsEligible(classToken, blessingID, false) then
 					local best, bestScore
 					for _, pally in ipairs(pallys) do
 						if not usedPally[pally] and Available(pally, blessingID) then
@@ -263,7 +275,7 @@ function Planner.Run()
 					if best then
 						usedPally[best] = true
 						slots = slots + 1
-						HO.Plan.SetClassAssignment(best, classToken, blessingID, "auto")
+						HO.Plan.SetClassAssignment(best, classToken, blessingID, mode)
 					end
 				end
 			end

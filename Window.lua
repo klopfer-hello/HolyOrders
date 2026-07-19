@@ -369,7 +369,7 @@ function Window.Refresh()
 					mrow:ClearAllPoints()
 					mrow:SetPoint("TOPLEFT", win, "TOPLEFT", 14, -y)
 					mrow:SetPoint("TOPRIGHT", win, "TOPRIGHT", 0, -y)
-					local isTank = plan.tanks[entry.name] or entry.tankRole
+					local isTank = HO.Plan.IsTank(entry.name, entry.tankRole)
 					local spec = HO.db.specCache[entry.name]
 					local short = entry.name:match("^([^%-]+)") or entry.name
 					mrow.label.text:SetText(short

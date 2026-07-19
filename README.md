@@ -1,5 +1,7 @@
 # HolyOrders
 
+![HolyOrders](media/banner.png)
+
 Paladin blessing coordination for WoW Classic (TBC Anniversary) — assign,
 sync, and cast raid blessings without wasting raid time.
 

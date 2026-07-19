@@ -70,7 +70,9 @@ local function Create()
 		return
 	end
 	frame = CreateFrame("Frame", "HolyOrdersRequest", UIParent)
-	frame:SetFrameStrata("HIGH")
+	-- MEDIUM (standard panel strata) so higher-priority windows draw cleanly over
+	-- us instead of bleeding through at HIGH
+	frame:SetFrameStrata("MEDIUM")
 	frame:SetMovable(true)
 	frame:SetClampedToScreen(true)
 	frame:EnableMouse(true)

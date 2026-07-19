@@ -445,7 +445,9 @@ function Window.Create()
 		return
 	end
 	win = CreateFrame("Frame", "HolyOrdersWindow", UIParent)
-	win:SetFrameStrata("HIGH")
+	-- MEDIUM (standard panel strata) so higher-priority windows like the calendar
+	-- draw cleanly OVER us instead of interleaving/bleeding through at HIGH
+	win:SetFrameStrata("MEDIUM")
 	win:SetMovable(true)
 	win:SetClampedToScreen(true)
 	win:EnableMouse(true)

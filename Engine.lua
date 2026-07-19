@@ -125,13 +125,20 @@ function Engine.Update()
 		local greater = assign and UseGreater(assign, eligiblePlayers) or false
 
 		local force = Engine.ForceActive()
-		local missing, expiring, minRemaining = {}, {}, nil
+		-- class-wide targets before override/pet singles: a greater cast
+		-- replaces this paladin's own singles on the whole class ("one
+		-- blessing per paladin"), so it must always happen first
+		local missingClass, missingSingles, expiring, minRemaining = {}, {}, {}, nil
 		for _, item in ipairs(pool) do
 			local has, remaining, duration = HasBlessing(item.entry.unit, item.blessingID)
 			item.remaining = remaining
 			if not has then
 				if Castable(item.entry) then
-					table.insert(missing, item)
+					if item.isOverride or item.entry.isPet then
+						table.insert(missingSingles, item)
+					else
+						table.insert(missingClass, item)
+					end
 				end
 			elseif remaining then
 				if not minRemaining or remaining < minRemaining then
@@ -147,7 +154,8 @@ function Engine.Update()
 			return (a.remaining or 0) < (b.remaining or 0)
 		end)
 
-		local nextItem = missing[1] or expiring[1]
+		local missingCount = #missingClass + #missingSingles
+		local nextItem = missingClass[1] or missingSingles[1] or expiring[1]
 		if nextItem then
 			local blessing = HO.Data.blessings[nextItem.blessingID]
 			-- greater only for class-wide targets of the class blessing; pets
@@ -160,7 +168,7 @@ function Engine.Update()
 				spellName = castGreater and blessing.greaterName or blessing.name,
 				unit = nextItem.entry.unit,
 				unitName = nextItem.entry.name,
-				missing = #missing,
+				missing = missingCount,
 				expiring = #expiring,
 				minRemaining = minRemaining,
 				icon = blessing.icon,

@@ -50,7 +50,9 @@ local function PetIncluded(entry)
 	if ownerClass == "WARLOCK" then
 		return petOpts.warlock == true
 	end
-	return true
+	-- only hunter and warlock pets are permanent companions worth buffing;
+	-- everything else (shadowfiend, water elemental, …) is temporary
+	return false
 end
 Engine.PetIncluded = PetIncluded
 
@@ -142,8 +144,17 @@ local function UseGreater(assign, eligiblePlayers)
 	return eligiblePlayers >= (HO.db.options.greaterMin or 2)
 end
 
+-- the engine's actual greater-vs-singles verdict per class for MY duty, so the
+-- window tooltip can show what the bar will really cast (nil: not my duty)
+local greaterVerdict = {}
+
+function Engine.WouldUseGreater(classToken)
+	return greaterVerdict[classToken]
+end
+
 function Engine.Update()
 	wipe(Engine.tasks)
+	wipe(greaterVerdict)
 	local plan = HO.Plan.Active()
 	local me = HO.FullName("player")
 	if not me then
@@ -178,9 +189,11 @@ function Engine.Update()
 
 	for classToken, pool in pairs(pools) do
 		local assign = plan.class[me] and plan.class[me][classToken]
+		-- count only members that can actually be cast on (online, alive,
+		-- visible) so the greater-vs-single decision matches reality
 		local eligiblePlayers = 0
 		for _, item in ipairs(pool) do
-			if not item.isOverride and not item.entry.isPet then
+			if not item.isOverride and not item.entry.isPet and Castable(item.entry) then
 				eligiblePlayers = eligiblePlayers + 1
 			end
 		end
@@ -190,6 +203,9 @@ function Engine.Update()
 		-- mode was explicitly forced to greater by the user
 		if greater and assign and assign.id == SALVATION and classTanks[classToken] and assign.mode ~= "greater" then
 			greater = false
+		end
+		if assign then
+			greaterVerdict[classToken] = greater
 		end
 
 		local force = Engine.ForceActive()
@@ -239,7 +255,25 @@ function Engine.Update()
 		end
 
 		local missingCount = #missingClass + #missingSingles
-		local nextItem = FirstInRange(missingClass) or FirstInRange(missingSingles) or FirstInRange(expiring)
+		-- in-range items across all three work lists; out-of-range members can
+		-- never be cast on, so only reachable work may keep a sweep alive
+		local reachable = 0
+		for _, list in ipairs({ missingClass, missingSingles, expiring }) do
+			for _, item in ipairs(list) do
+				if item.inRange then
+					reachable = reachable + 1
+				end
+			end
+		end
+		-- while a greater cast on this class is still pending, do NOT fall
+		-- through to override singles on members of the class — the greater
+		-- would immediately wipe them (M4)
+		local nextItem
+		if greater and #missingClass > 0 then
+			nextItem = FirstInRange(missingClass) or FirstInRange(expiring)
+		else
+			nextItem = FirstInRange(missingClass) or FirstInRange(missingSingles) or FirstInRange(expiring)
+		end
 		if nextItem then
 			local blessing = HO.Data.blessings[nextItem.blessingID]
 			-- greater only for class-wide targets of the class blessing; pets
@@ -259,6 +293,9 @@ function Engine.Update()
 				outOfRange = outOfRange,
 				minRemaining = minRemaining,
 				icon = blessing.icon,
+				reachable = reachable,
+				-- pool fed solely by overrides (no class-wide assignment)
+				overrideOnly = (assign == nil) and true or nil,
 			}
 		else
 			-- nothing castable right now (all covered, or the needy ones are
@@ -276,6 +313,8 @@ function Engine.Update()
 				outOfRange = outOfRange,
 				minRemaining = minRemaining,
 				icon = blessing and blessing.icon,
+				reachable = reachable,
+				overrideOnly = (assign == nil) and true or nil,
 			}
 		end
 	end
@@ -284,7 +323,9 @@ function Engine.Update()
 	if Engine.forceUntil and Engine.ForceActive() then
 		local pending = false
 		for _, task in pairs(Engine.tasks) do
-			if task.missing > 0 or task.expiring > 0 then
+			-- only reachable (in-range) work keeps the sweep alive; unreachable
+			-- members would otherwise pin it until the timeout
+			if (task.reachable or 0) > 0 then
 				pending = true
 				break
 			end

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-07-19
+
+### Fixed
+- Greater blessings were downgraded to 10-minute singles when members carried
+  per-member overrides identical to the class assignment (left over from
+  earlier edits). Such redundant overrides no longer block greater casts and
+  are cleaned from the plan on every Auto run.
+
 ## [0.6.0] - 2026-07-19
 
 ### Added

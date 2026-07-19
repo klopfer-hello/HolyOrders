@@ -214,8 +214,14 @@ function Window.Create()
 	win.header.title:SetPoint("LEFT", 10, 0)
 	win.header.title:SetText("HolyOrders — Assignments")
 
-	local close = CreateFrame("Button", nil, win.header, "UIPanelCloseButton")
-	close:SetPoint("TOPRIGHT", 2, 2)
+	-- parent the close button to the window, not the header: the template's
+	-- default OnClick hides its PARENT, which used to hide only the title bar
+	local close = CreateFrame("Button", nil, win, "UIPanelCloseButton")
+	close:SetPoint("TOPRIGHT", win, "TOPRIGHT", 2, 2)
+	close:SetFrameLevel(win.header:GetFrameLevel() + 1)
+	close:SetScript("OnClick", function()
+		win:Hide()
+	end)
 
 	local function HeaderButton(text, offsetX, onClick, tooltip)
 		local btn = CreateFrame("Button", nil, win.header, "UIPanelButtonTemplate")
@@ -407,6 +413,7 @@ function Window.Toggle()
 	if win:IsShown() then
 		win:Hide()
 	else
+		win.header:Show() -- defensive: never present a headless window
 		win:Show()
 		Window.Refresh()
 	end

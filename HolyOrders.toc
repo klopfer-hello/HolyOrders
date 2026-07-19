@@ -11,4 +11,5 @@ Data.lua
 Talents.lua
 Roster.lua
 Plan.lua
+Planner.lua
 Commands.lua

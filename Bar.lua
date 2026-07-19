@@ -19,6 +19,7 @@ local CLASS_ORDER = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN
 local bar, handle, ticker
 local buttons = {}
 local lastGrow
+local pendingReset
 
 -- arranges handle and buttons for the configured growth direction; must only
 -- run out of combat (buttons are protected frames)
@@ -55,6 +56,15 @@ local function LayoutBar()
 		else
 			btn:SetPoint("BOTTOM", bar, "BOTTOM", 0, offset)
 		end
+		-- in vertical growth the buttons stack with only GAP between them, so
+		-- a timer under the icon overlaps the neighbour; put it to the side
+		-- (clear of the handle, which sits at the top/bottom origin)
+		btn.timer:ClearAllPoints()
+		if horizontal then
+			btn.timer:SetPoint("TOP", btn, "BOTTOM", 0, -1)
+		else
+			btn.timer:SetPoint("LEFT", btn, "RIGHT", 1, 0)
+		end
 	end
 	lastGrow = grow
 end
@@ -73,6 +83,13 @@ local function SavePosition()
 end
 
 function Bar.ResetPosition()
+	-- the bar is a protected frame (secure buttons anchor to it); moving it in
+	-- combat would taint, so defer to PLAYER_REGEN_ENABLED
+	if InCombatLockdown() then
+		pendingReset = true
+		HO.Print(L["can't move the bar in combat — will reset it after combat"])
+		return
+	end
 	local opts = BarOptions()
 	opts.point, opts.relPoint, opts.x, opts.y = nil, nil, nil, nil
 	bar:ClearAllPoints()
@@ -129,9 +146,16 @@ local function CreateButton(index)
 		end
 		local task = self.task
 		if task then
+			-- a duty that exists only as a single-member override has no
+			-- class-wide assignment to cycle; wheeling would fabricate one
+			if task.overrideOnly then
+				HO.Print(L["this duty is a single-member override — change it in the assignment window"])
+				return
+			end
 			HO.Window.CycleMyClass(task.classToken, delta > 0 and 1 or -1)
 		end
 	end)
+	btn.hoBarButton = true -- marks our buttons for the tooltip re-render check
 
 	btn.bg = btn:CreateTexture(nil, "BACKGROUND")
 	btn.bg:SetAllPoints()
@@ -207,11 +231,17 @@ function Bar.Create()
 	handle.tex:SetAllPoints()
 	handle.tex:SetColorTexture(0.94, 0.78, 0.09, 0.55)
 	handle:SetScript("OnDragStart", function()
+		if InCombatLockdown() then
+			return -- moving the protected bar in combat would taint it
+		end
 		if not BarOptions().locked then
 			bar:StartMoving()
 		end
 	end)
 	handle:SetScript("OnDragStop", function()
+		if InCombatLockdown() then
+			return
+		end
 		bar:StopMovingOrSizing()
 		SavePosition()
 	end)
@@ -286,7 +316,22 @@ function Bar.Refresh()
 	end
 
 	if (BarOptions().grow or "right") ~= lastGrow then
+		-- the frame changes shape (long ↔ tall) while keeping its corner anchor,
+		-- which would fling the whole bar ~320 px; record the handle's screen
+		-- position (the handle is the origin end in every mode, so users read it
+		-- as "the" location) and shift the bar so the handle stays put
+		local hLeft, hTop = handle:GetLeft(), handle:GetTop()
 		LayoutBar()
+		local nhLeft, nhTop = handle:GetLeft(), handle:GetTop()
+		if hLeft and hTop and nhLeft and nhTop then
+			local point, _, relPoint, x, y = bar:GetPoint()
+			if point then
+				bar:ClearAllPoints()
+				bar:SetPoint(point, UIParent, relPoint or point,
+					(x or 0) + (hLeft - nhLeft), (y or 0) + (hTop - nhTop))
+				SavePosition()
+			end
+		end
 	end
 
 	local index = 0
@@ -328,6 +373,20 @@ function Bar.Refresh()
 	else
 		bar:Hide()
 	end
+
+	-- a tooltip open over a button now describes freshly-reassigned data; a
+	-- single owner check re-renders it (or hides it if the button went away)
+	local owner = GameTooltip:GetOwner()
+	if owner and owner.hoBarButton then
+		if owner:IsShown() and owner.task then
+			local onEnter = owner:GetScript("OnEnter")
+			if onEnter then
+				onEnter(owner)
+			end
+		else
+			GameTooltip:Hide()
+		end
+	end
 end
 
 function Bar.Init()
@@ -340,5 +399,9 @@ end
 
 HO.RegisterEvent("PLAYER_LOGIN", Bar.Init)
 HO.RegisterEvent("PLAYER_REGEN_ENABLED", function()
+	if pendingReset then
+		pendingReset = nil
+		Bar.ResetPosition()
+	end
 	Bar.Refresh()
 end)

@@ -17,6 +17,8 @@ local ROW_H = 26
 local MEMBER_ROW_H = 22
 local PAD = 8
 local MAX_COLS = 8
+local LABEL_INDENT = 14 -- member-row label indent (rows themselves stay aligned)
+local HEADER_MAX_CHARS = 5
 
 local CLASS_ORDER = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
 local MODE_TAG = { auto = "|cff9d9d9da|r", greater = "|cffffd100G|r", normal = "|cffffffffn|r" }
@@ -27,6 +29,26 @@ local expanded = {} -- [classToken] = true
 local classRows, memberRows = {}, {}
 
 -- helpers ---------------------------------------------------------------------
+
+-- truncate to at most maxChars whole UTF-8 characters; :sub on a byte count
+-- can split a multi-byte glyph (German names) and print garbage
+local function Utf8Truncate(str, maxChars)
+	local chars, i, n = 0, 1, #str
+	while i <= n and chars < maxChars do
+		local b = str:byte(i)
+		local size = 1
+		if b >= 0xF0 then
+			size = 4
+		elseif b >= 0xE0 then
+			size = 3
+		elseif b >= 0xC0 then
+			size = 2
+		end
+		i = i + size
+		chars = chars + 1
+	end
+	return str:sub(1, i - 1)
+end
 
 local function BlessingName(id)
 	local blessing = HO.Data.blessings[id]
@@ -151,7 +173,17 @@ local function CellTooltip(cell)
 			local n = cell.memberCount or 0
 			local min = HO.db.options.greaterMin or 2
 			if cur.mode == "auto" then
-				local effective = (n >= min)
+				-- the engine decides greater vs singles from eligible castable
+				-- members, symbol count and greater-known; prefer its verdict
+				-- when available, else fall back to the raw member-count heuristic
+				local useGreater
+				if HO.Engine and HO.Engine.WouldUseGreater then
+					useGreater = HO.Engine.WouldUseGreater(cell.classToken)
+				end
+				if useGreater == nil then
+					useGreater = (n >= min)
+				end
+				local effective = useGreater
 					and L["greater (30 min, whole class, 1 Symbol of Kings)"]
 					or L["10-min singles (too few members for greater)"]
 				GameTooltip:AddLine(string.format(L["mode: auto — greater from %d+ members, singles otherwise"], min), 0.9, 0.9, 0.9, true)
@@ -187,18 +219,22 @@ local function CreateCell(parent)
 	cell.mode:SetPoint("BOTTOMRIGHT", -1, 1)
 	cell:SetScript("OnEnter", CellTooltip)
 	cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
+	cell.hoCell = true -- marks our cells for the tooltip re-render check
 	return cell
 end
 
-local function AcquireRow(pool, index, height)
+local function AcquireRow(pool, index, height, labelIndent)
+	labelIndent = labelIndent or 0
 	local row = pool[index]
 	if not row then
 		row = CreateFrame("Frame", nil, win)
 		row:SetHeight(height)
 		row.cells = {}
 		row.label = CreateFrame("Button", nil, row)
-		row.label:SetPoint("LEFT", 4, 0)
-		row.label:SetSize(NAME_W - 8, height)
+		-- indent the label only (not the row), so cells stay aligned with the
+		-- class-row cells and the column headers
+		row.label:SetPoint("LEFT", 4 + labelIndent, 0)
+		row.label:SetSize(NAME_W - 8 - labelIndent, height)
 		row.label.text = row.label:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 		row.label.text:SetPoint("LEFT", 2, 0)
 		row.label.text:SetJustifyH("LEFT")
@@ -325,7 +361,7 @@ function Window.Refresh()
 		fs:SetPoint("TOPLEFT", win, "TOPLEFT", NAME_W + (c - 1) * COL_W, -(HEADER_H + 4))
 		fs:SetWidth(COL_W - COL_GAP)
 		local short = pallys[c]:match("^([^%-]+)") or pallys[c]
-		fs:SetText(short:sub(1, 5))
+		fs:SetText(Utf8Truncate(short, HEADER_MAX_CHARS))
 		fs:Show()
 	end
 	for c = numCols + 1, #win.colHeader do
@@ -414,9 +450,9 @@ function Window.Refresh()
 				end
 				for _, entry in ipairs(rows) do
 					memberIndex = memberIndex + 1
-					local mrow = AcquireRow(memberRows, memberIndex, MEMBER_ROW_H)
+					local mrow = AcquireRow(memberRows, memberIndex, MEMBER_ROW_H, LABEL_INDENT)
 					mrow:ClearAllPoints()
-					mrow:SetPoint("TOPLEFT", win, "TOPLEFT", 14, -y)
+					mrow:SetPoint("TOPLEFT", win, "TOPLEFT", 0, -y)
 					mrow:SetPoint("TOPRIGHT", win, "TOPRIGHT", 0, -y)
 					local short = entry.name:match("^([^%-]+)") or entry.name
 					if entry.isPet then
@@ -455,7 +491,6 @@ function Window.Refresh()
 							RefreshAll()
 						end)
 					end
-					mrow.memberName = entry.name
 					mrow.label:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 					for c = 1, numCols do
 						local cell = RowCell(mrow, c, MemberCellClick)
@@ -514,6 +549,20 @@ function Window.Refresh()
 	end
 
 	win:SetSize(math.max(NAME_W + numCols * COL_W + PAD, 520), y + 38)
+
+	-- a tooltip open over a cell now describes a repurposed cell; a single
+	-- owner check re-renders it (or hides it if the cell went away)
+	local owner = GameTooltip:GetOwner()
+	if owner and owner.hoCell then
+		if owner:IsShown() then
+			local onEnter = owner:GetScript("OnEnter")
+			if onEnter then
+				onEnter(owner)
+			end
+		else
+			GameTooltip:Hide()
+		end
+	end
 end
 
 function Window.Toggle()

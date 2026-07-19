@@ -80,3 +80,5 @@ L["plan is local — only your own assignments sync (lead/assist can broadcast a
 L["stored plan applied for this paladin roster"] = "Gespeicherter Plan für diese Paladin-Besetzung angewendet"
 L["stored plan for this roster available — '/ho plan apply' loads it (your unsaved edits are kept until then)"] = "Gespeicherter Plan für diese Besetzung verfügbar — '/ho plan apply' lädt ihn (ungespeicherte Änderungen bleiben bis dahin erhalten)"
 L["only lead/assist may flag others as tank"] = "Nur Leiter/Assistent dürfen andere als Tank markieren"
+L["can't move the bar in combat — will reset it after combat"] = "Leiste kann im Kampf nicht bewegt werden — sie wird nach dem Kampf zurückgesetzt"
+L["this duty is a single-member override — change it in the assignment window"] = "Diese Aufgabe ist eine Einzelmitglied-Überschreibung — ändere sie im Zuteilungsfenster"

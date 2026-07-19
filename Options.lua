@@ -7,6 +7,8 @@ local L = HO.L
 
 local PET_CYCLE = { 2, 1, 3 } -- Might > Wisdom > Kings
 local GROW_CYCLE = { "right", "left", "down", "up" }
+local REFRESH_INTERVAL = 1.0
+local LABEL_WIDTH = 280 -- wrap long (German) labels instead of running off the frame
 
 local frame
 local checks = {}
@@ -33,13 +35,24 @@ local function Refresh()
 	frame.growBtn:SetText(string.format(L["Bar grows: %s"], o.bar.grow or "right"))
 end
 
+-- toggles that change plan/pet display must also update an open assignment
+-- window, not just the cast bar (both are nil-safe: modules may not exist yet)
+local function RefreshAll()
+	if HO.Bar and HO.Bar.Refresh then
+		HO.Bar.Refresh()
+	end
+	if HO.Window and HO.Window.Refresh then
+		HO.Window.Refresh()
+	end
+end
+
 ITEMS = {
 	{ label = L["Show cast bar"], get = function(o) return not o.bar.hidden end, set = function(o, v) o.bar.hidden = not v; HO.Bar.Refresh() end },
 	{ label = L["Lock cast bar position"], get = function(o) return o.bar.locked end, set = function(o, v) o.bar.locked = v end },
 	{ label = L["Open edit: others may change my assignments"], get = function(o) return o.openEdit end, set = function(o, v) o.openEdit = v; HO.Comm.SendHello() end },
-	{ label = L["Prefer greater blessings even for single members"], get = function(o) return o.greaterMin == 1 end, set = function(o, v) o.greaterMin = v and 1 or 2; HO.Bar.Refresh() end },
-	{ label = L["Buff hunter pets"], get = function(o) return o.pets.hunter ~= false end, set = function(o, v) o.pets.hunter = v; HO.Bar.Refresh() end },
-	{ label = L["Buff warlock pets"], get = function(o) return o.pets.warlock == true end, set = function(o, v) o.pets.warlock = v; HO.Bar.Refresh() end },
+	{ label = L["Prefer greater blessings even for single members"], get = function(o) return o.greaterMin == 1 end, set = function(o, v) o.greaterMin = v and 1 or 2; RefreshAll() end },
+	{ label = L["Buff hunter pets"], get = function(o) return o.pets.hunter ~= false end, set = function(o, v) o.pets.hunter = v; RefreshAll() end },
+	{ label = L["Buff warlock pets"], get = function(o) return o.pets.warlock == true end, set = function(o, v) o.pets.warlock = v; RefreshAll() end },
 	{ label = L["Show minimap button"], get = function(o) return not o.minimap.hide end, set = function(o, v) o.minimap.hide = not v; HO.MinimapButton.UpdateShown() end },
 	{ label = L["Log sync messages (debug)"], get = function(o) return o.trace end, set = function(o, v) o.trace = v end },
 }
@@ -57,6 +70,20 @@ function Options.Create()
 	frame:EnableMouse(true)
 	frame:Hide()
 	table.insert(UISpecialFrames, "HolyOrdersOptions")
+
+	-- keep the panel in sync with /ho toggles made in chat while it is open
+	frame:SetScript("OnShow", function(self)
+		Refresh()
+		if not self.ticker then
+			self.ticker = C_Timer.NewTicker(REFRESH_INTERVAL, Refresh)
+		end
+	end)
+	frame:SetScript("OnHide", function(self)
+		if self.ticker then
+			self.ticker:Cancel()
+			self.ticker = nil
+		end
+	end)
 
 	frame.bg = frame:CreateTexture(nil, "BACKGROUND")
 	frame.bg:SetAllPoints()
@@ -88,7 +115,13 @@ function Options.Create()
 		local check = CreateFrame("CheckButton", "HolyOrdersOptCheck" .. i, frame, "UICheckButtonTemplate")
 		check:SetSize(24, 24)
 		check:SetPoint("TOPLEFT", 12, -(34 + (i - 1) * 26))
-		_G["HolyOrdersOptCheck" .. i .. "Text"]:SetText(item.label)
+		local labelText = _G["HolyOrdersOptCheck" .. i .. "Text"]
+		labelText:SetText(item.label)
+		-- cap width so long labels wrap onto a second line instead of spilling
+		-- past the ~330 px frame edge
+		labelText:SetWidth(LABEL_WIDTH)
+		labelText:SetWordWrap(true)
+		labelText:SetJustifyH("LEFT")
 		check:SetScript("OnClick", function(self)
 			item.set(Options.Ensure(), self:GetChecked() and true or false)
 			Refresh()
@@ -127,7 +160,7 @@ function Options.Create()
 		end
 		o.pets.blessing = nextID
 		Refresh()
-		HO.Bar.Refresh()
+		RefreshAll()
 	end)
 end
 

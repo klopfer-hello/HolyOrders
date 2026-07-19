@@ -25,7 +25,9 @@ local FIRST_ROW_OFFSET = 20 -- gap between the column headers and the first row
 local ICON_SIZE = 24 -- cell icon size (rows grow with it so icons don't overflow)
 
 local CLASS_ORDER = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
-local MODE_TAG = { auto = "|cff9d9d9da|r", greater = "|cffffd100G|r", normal = "|cffffffffn|r" }
+-- cast-mode tag shown on a cell: A auto, G great (greater), S small (10-min
+-- single). Distinct bright colours + an outlined font read on any blessing icon.
+local MODE_TAG = { auto = "|cff40c0ffA|r", greater = "|cffffd100G|r", normal = "|cff40ff40S|r" }
 local EMPTY_SLOT = "Interface\\PaperDoll\\UI-Backpack-EmptySlot"
 local NONE_ICON = "Interface\\Buttons\\UI-GroupLoot-Pass-Up" -- explicit-none marker (matches the bar)
 -- rounded-cell textures (mirrors the cast bar): a corner mask and a tintable
@@ -311,8 +313,11 @@ local function CreateCell(parent)
 	cell.frame:SetPoint("BOTTOMRIGHT", cell.icon, "BOTTOMRIGHT", 1, -1)
 	cell.frame:SetTexture(WIN_BTN_FRAME)
 	cell.frame:SetVertexColor(0.5, 0.42, 0.22, 0.7)
-	cell.mode = cell:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	cell.mode = cell:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	cell.mode:SetPoint("BOTTOMRIGHT", -1, 1)
+	cell.mode:SetDrawLayer("OVERLAY", 5) -- above the icon and frame
+	local mf, ms = cell.mode:GetFont()
+	cell.mode:SetFont(mf, (ms or 12) + 3, "THICKOUTLINE") -- larger, outlined for contrast
 	cell:SetScript("OnEnter", CellTooltip)
 	cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
 	cell.hoCell = true -- marks our cells for the tooltip re-render check
@@ -632,7 +637,7 @@ function Window.Refresh()
 		win.salvBtn:SetText(active and "|cffff4040Salv OFF|r" or "No Salv")
 	end
 	win.hint:SetText(L["click: blessing — right-click: clear — shift-click: mode — click class: members"] .. "\n"
-		.. string.format(L["mode: |cff9d9d9da|r auto (greater from %d+ members) — |cffffd100G|r always greater (symbol) — |cffffffffn|r always 10-min singles"], HO.db.options.greaterMin or 2))
+		.. string.format(L["mode: |cff40c0ffA|r auto (greater from %d+ members) — |cffffd100G|r always greater (symbol) — |cff40ff40S|r always 10-min singles"], HO.db.options.greaterMin or 2))
 
 	-- column headers (paladin short names, vertical position under header)
 	for c = 1, numCols do

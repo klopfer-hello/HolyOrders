@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-07-19
+
+### Added
+- Option "Prefer greater blessings even for single members": the auto cast
+  mode normally uses 10-minute singles below 2 class members (saves symbols);
+  with this on, greater is cast whenever it is known — the 30-minute duration
+  wins over reagent thrift.
+
 ## [0.9.1] - 2026-07-19
 
 ### Fixed

@@ -149,10 +149,22 @@ local function MemberCellClick(cell, mouseBtn)
 	end
 	local plan = HO.Plan.Active()
 	local cur = plan.player[cell.pally] and plan.player[cell.pally][cell.memberName]
+	-- pets are excluded from likings: a pet blessing choice is an option, not a
+	-- member wish, so it is never recorded as a persistent preference
+	local rosterEntry = HO.Roster.byName[cell.memberName]
+	local isPet = rosterEntry and rosterEntry.isPet
 	if mouseBtn == "RightButton" then
 		HO.Plan.SetPlayerOverride(cell.pally, cell.memberName, 0)
+		if not isPet then
+			HO.Plan.SetMemberPref(cell.memberName, nil) -- clearing the override forgets the liking
+		end
 	else
-		HO.Plan.SetPlayerOverride(cell.pally, cell.memberName, CycleOverrideBlessing(cell.pally, cur))
+		local newID = CycleOverrideBlessing(cell.pally, cur)
+		HO.Plan.SetPlayerOverride(cell.pally, cell.memberName, newID)
+		if not isPet then
+			-- a manual override records the member's liking (0 = cycled to none = forget)
+			HO.Plan.SetMemberPref(cell.memberName, newID ~= 0 and newID or nil)
+		end
 	end
 	RefreshAll()
 end
@@ -166,6 +178,14 @@ local function CellTooltip(cell)
 		GameTooltip:AddLine(string.format(L["override by %s: %s"], cell.pally, cur and BlessingName(cur) or L["none"]), 1, 1, 1)
 		if not cur and cell.inheritedID then
 			GameTooltip:AddLine(string.format(L["inherited from class assignment: %s"], BlessingName(cell.inheritedID)), 0.7, 0.7, 0.7)
+		end
+		-- remembered liking (pets never have one)
+		local rosterEntry = HO.Roster.byName[cell.memberName]
+		if not (rosterEntry and rosterEntry.isPet) then
+			local pref = HO.Plan.MemberPref(cell.memberName)
+			if pref then
+				GameTooltip:AddLine(string.format(L["remembered preference: %s"], BlessingName(pref)), 0.6, 0.8, 1)
+			end
 		end
 		GameTooltip:AddLine(L["click: next blessing — right-click: clear"], 0.8, 0.8, 0.8)
 	else

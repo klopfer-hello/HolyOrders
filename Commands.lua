@@ -183,10 +183,70 @@ HO.commands["override"] = function(rest)
 		return
 	end
 	HO.Plan.SetPlayerOverride(HO.FullName("player"), target, id)
+	-- a manual override records the member's liking (0 clears both); pets excluded
+	if not entry.isPet then
+		HO.Plan.SetMemberPref(target, id ~= 0 and id or nil)
+	end
 	if id == 0 then
 		HO.Print("override cleared for " .. target)
 	else
 		HO.Print("override: " .. BlessingLabel(id) .. " on " .. target)
+	end
+end
+
+HO.commands["prefs"] = function(rest)
+	local sub, arg = rest:match("^(%S*)%s*(.*)$")
+	sub = (sub or ""):lower()
+	local prefs = HO.db.memberPrefs or {}
+	if sub == "" then
+		local names = {}
+		for name in pairs(prefs) do
+			table.insert(names, name)
+		end
+		if #names == 0 then
+			HO.Print("no member preferences remembered")
+			return
+		end
+		table.sort(names)
+		HO.Print(#names .. " remembered member preference(s):")
+		for _, name in ipairs(names) do
+			HO.PrintLine(name .. " — " .. BlessingLabel(prefs[name]))
+		end
+	elseif sub == "clear" then
+		if arg:lower() == "all" then
+			local names = {}
+			for name in pairs(prefs) do
+				table.insert(names, name)
+			end
+			for _, name in ipairs(names) do
+				HO.Plan.SetMemberPref(name, nil)
+			end
+			HO.Print("forgot all " .. #names .. " remembered member preference(s)")
+		elseif arg ~= "" then
+			-- resolve case-insensitively against the stored keys, exact key first
+			local match
+			if prefs[arg] then
+				match = arg
+			else
+				local lower = arg:lower()
+				for name in pairs(prefs) do
+					if name:lower() == lower then
+						match = name
+						break
+					end
+				end
+			end
+			if match then
+				HO.Plan.SetMemberPref(match, nil)
+				HO.Print("forgot remembered preference for " .. match)
+			else
+				HO.Print("no remembered preference for " .. arg)
+			end
+		else
+			HO.Print("usage: /ho prefs clear <name> | clear all")
+		end
+	else
+		HO.Print("usage: /ho prefs  (list) | clear <name> | clear all")
 	end
 end
 
@@ -494,6 +554,7 @@ local DESC = {
 	plan = "manage stored roster plans",
 	assign = "set a class blessing assignment",
 	override = "set a per-player blessing override",
+	prefs = "list or clear remembered member blessings",
 	tank = "toggle a member's tank flag",
 	spec = "tag a member's spec for the planner",
 	win = "toggle the assignment window",

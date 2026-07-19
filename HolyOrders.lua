@@ -12,6 +12,7 @@ local DB_DEFAULTS = {
 	options = {},
 	plans = {},     -- stored blessing plans, keyed by roster signature
 	prefs = {},     -- class/spec blessing preferences
+	memberPrefs = {}, -- [fullName] = blessingID: remembered per-member blessing likings
 	specCache = {}, -- per-character spec tags
 	log = {},       -- persistent debug log (ring buffer, see HO.Log)
 }

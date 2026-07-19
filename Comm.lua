@@ -420,27 +420,61 @@ function Comm.OnTankToggled(name, flagged)
 	Send("T:" .. name .. ";" .. (flagged and "1" or "0"))
 end
 
--- emit a name list as one or more PT messages, each kept under the size cap by
--- splitting only on name boundaries
-local function SendTankChunks(names)
-	local budget = MAX_MSG - #PROTO - #(":PT:") -- payload bytes left after the header
+-- emit a list of pre-encoded entries as one or more TYPE messages, each kept
+-- under the size cap by splitting only on entry ("|") boundaries
+local function SendEntryChunks(msgType, entries, channel, target)
+	local budget = MAX_MSG - #PROTO - #(":" .. msgType .. ":") -- payload bytes left after the header
 	local chunk, len = {}, 0
 	local function flush()
 		if #chunk > 0 then
-			Send("PT:" .. table.concat(chunk, "|"))
+			Send(msgType .. ":" .. table.concat(chunk, "|"), channel, target)
 			chunk, len = {}, 0
 		end
 	end
-	for _, name in ipairs(names) do
-		local add = (#chunk > 0 and 1 or 0) + #name -- separator + name
+	for _, entry in ipairs(entries) do
+		local add = (#chunk > 0 and 1 or 0) + #entry -- separator + entry
 		if #chunk > 0 and len + add > budget then
 			flush()
-			add = #name
+			add = #entry
 		end
-		chunk[#chunk + 1] = name
+		chunk[#chunk + 1] = entry
 		len = len + add
 	end
 	flush()
+end
+
+-- emit the tank name list as one or more PT messages
+local function SendTankChunks(names)
+	SendEntryChunks("PT", names)
+end
+
+-- immediate broadcast of a member-liking change (rare event, no debounce):
+-- MP:<name>;<id> where id 0 means "forget". Direct write on receipt (below).
+function Comm.OnMemberPrefChanged(name, id)
+	if Comm.suspended or not me or not name then
+		return
+	end
+	Send("MP:" .. name .. ";" .. (id or 0))
+end
+
+-- piggybacked onto a greet: share every remembered member liking in one or more
+-- MB batches (each entry "name=id", split on entry boundaries under the cap).
+-- Adds/updates only — deletions travel via explicit MP:name;0.
+function Comm.SendKnownMemberPrefs(channel, target)
+	if not me or not HO.db or not HO.db.memberPrefs then
+		return
+	end
+	local entries = {}
+	for name, id in pairs(HO.db.memberPrefs) do
+		if id and id ~= 0 then
+			table.insert(entries, name .. "=" .. id)
+		end
+	end
+	if #entries == 0 then
+		return
+	end
+	table.sort(entries)
+	SendEntryChunks("MB", entries, channel, target)
 end
 
 -- authoritative plan snapshot: a row for EVERY paladin in the roster (empty
@@ -546,6 +580,7 @@ handlers["H"] = function(sender, payload)
 			Comm.SendHello("WHISPER", sender)
 			Comm.SendFull(sender)
 			Comm.SendKnownSpecTags("WHISPER", sender)
+			Comm.SendKnownMemberPrefs("WHISPER", sender)
 		end)
 	end
 end
@@ -815,6 +850,39 @@ handlers["ST"] = function(sender, payload)
 	end
 end
 
+-- member-liking sync: last-writer-wins, no revisioning (likings change rarely).
+-- Direct table writes only (never via Plan.SetMemberPref, which would echo back).
+handlers["MP"] = function(sender, payload)
+	local name, idStr = strsplit(";", payload)
+	if not name then
+		return
+	end
+	local id = tonumber(idStr)
+	HO.db.memberPrefs = HO.db.memberPrefs or {}
+	if not id or id == 0 then
+		HO.db.memberPrefs[name] = nil
+	elseif HO.Data.blessings[id] then
+		HO.db.memberPrefs[name] = id
+	end
+	RefreshUI()
+end
+
+-- batched likings from a greet; adds/updates only, never deletes local entries
+handlers["MB"] = function(sender, payload)
+	if not payload then
+		return
+	end
+	HO.db.memberPrefs = HO.db.memberPrefs or {}
+	for entry in string.gmatch(payload, "[^|]+") do
+		local name, idStr = entry:match("^(.+)=(%d+)$")
+		local id = name and tonumber(idStr)
+		if id and HO.Data.blessings[id] then
+			HO.db.memberPrefs[name] = id
+		end
+	end
+	RefreshUI()
+end
+
 local protoWarned = {}
 
 -- mutating message types require the sender to be a current group member; when
@@ -824,6 +892,7 @@ local MUTATING = {
 	SC = true, SP = true, F = true, T = true,
 	PS = true, PR = true, PT = true, PE = true,
 	NS = true, LR = true, LL = true, ST = true,
+	MP = true, MB = true,
 	FG = true,
 }
 
@@ -959,6 +1028,7 @@ HO.RegisterEvent("PLAYER_LOGIN", function()
 				Comm.SendHello()
 				Comm.SendFull()
 				Comm.SendKnownSpecTags()
+				Comm.SendKnownMemberPrefs()
 			end
 		end
 	end)

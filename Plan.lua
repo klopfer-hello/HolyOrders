@@ -124,6 +124,31 @@ function Plan.SetPlayerOverride(paladin, targetName, blessingID)
 	end
 end
 
+-- persistent per-member blessing liking, remembered by character name and
+-- independent of any paladin pairing. This is NOT plan state (never marks the
+-- plan dirty); it feeds the auto-planner's preference chain and syncs on its own.
+function Plan.SetMemberPref(name, blessingID)
+	if not name or not HO.db then
+		return
+	end
+	HO.db.memberPrefs = HO.db.memberPrefs or {}
+	local newID = (blessingID and blessingID ~= 0) and blessingID or nil
+	if HO.db.memberPrefs[name] == newID then
+		return -- unchanged: nothing to store or announce
+	end
+	HO.db.memberPrefs[name] = newID
+	if HO.Comm and HO.Comm.OnMemberPrefChanged then
+		HO.Comm.OnMemberPrefChanged(name, newID)
+	end
+end
+
+function Plan.MemberPref(name)
+	if not name or not HO.db or not HO.db.memberPrefs then
+		return nil
+	end
+	return HO.db.memberPrefs[name]
+end
+
 function Plan.ToggleTank(name)
 	-- gate here too so no future caller can bypass the tank-flag permission
 	-- (nil-safe when Comm is not loaded)

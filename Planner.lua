@@ -46,14 +46,25 @@ end
 -- the planner respects separately
 function Planner.ResolvePreference(name, classToken, isTank)
 	if isTank then
-		return { KINGS }
+		return { KINGS } -- tank protection beats any liking
 	end
 	local prefs = HO.db.prefs[classToken] or DEFAULT_PREFS[classToken]
-	if not prefs then
-		return { KINGS }
+	local spec = name and HO.db.specCache[name]
+	local chain = (prefs and ((spec and prefs[spec]) or prefs.default)) or { KINGS }
+	-- a remembered member liking comes first; the spec/default chain follows as
+	-- fallback (a duplicate of the liking is dropped). Downstream FirstCastablePref
+	-- / step-4 logic then picks the liking when castable and falls back otherwise.
+	local liking = HO.Plan and HO.Plan.MemberPref and HO.Plan.MemberPref(name)
+	if not liking then
+		return chain
 	end
-	local spec = HO.db.specCache[name]
-	return (spec and prefs[spec]) or prefs.default or { KINGS }
+	local result = { liking }
+	for _, id in ipairs(chain) do
+		if id ~= liking then
+			table.insert(result, id)
+		end
+	end
+	return result
 end
 
 -- capabilities ----------------------------------------------------------------
@@ -187,6 +198,28 @@ local function RunCore(pallys)
 	local units = HO.Roster.units
 	local isRaid = IsInRaid()
 	local solo = (#pallys == 1)
+
+	-- stale-paladin pruning: drop overrides owned by paladins no longer in the
+	-- roster. An absent owner's leftover override otherwise blocks step 4 via
+	-- HasOverrideFor while nobody is present to cast it. plan.class is wiped just
+	-- below anyway; plan.rev (revision continuity for absent owners) and
+	-- plan.tanks are deliberately left untouched.
+	local inRoster = {}
+	for _, pally in ipairs(pallys) do
+		inRoster[pally] = true
+	end
+	for pally in pairs(plan.player) do
+		if not inRoster[pally] then
+			plan.player[pally] = nil
+		end
+	end
+	if plan.autoPlayer then
+		for pally in pairs(plan.autoPlayer) do
+			if not inRoster[pally] then
+				plan.autoPlayer[pally] = nil
+			end
+		end
+	end
 
 	ClearAutoOverrides(plan)
 	wipe(plan.class)

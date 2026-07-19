@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-07-19
+
+### Added
+- Pets appear in the assignment window under their class (labeled with their
+  owner) and can be given per-pet overrides like any member.
+
+### Fixed
+- The options window's close button was blocked by the drag header — clicks
+  only landed next to it.
+
 ## [0.11.0] - 2026-07-19
 
 ### Added

@@ -494,27 +494,22 @@ local function AcquireFlyoutRow(index)
 		CancelClose() -- keep the fly-out open while the cursor is over a row
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 		GameTooltip:SetText(self.memberName or "?")
+		-- minimal: the assigned blessing, and only an actionable status (the green
+		-- border already says "has it"); no control hint and no positive line
 		if self.blessingID then
 			GameTooltip:AddLine(FlyoutBlessingName(self.blessingID), 1, 1, 1)
 			if self.inRange == false then
 				GameTooltip:AddLine(L["out of range"], 0.7, 0.7, 0.7)
-			elseif self.hasBuff == true then
-				GameTooltip:AddLine(L["has the blessing"], 0.6, 1, 0.6)
 			elseif self.hasBuff == false then
 				GameTooltip:AddLine(L["missing the blessing"], 1, 0.4, 0.4)
 			end
 		else
 			GameTooltip:AddLine(L["no buff assigned"], 0.8, 0.8, 0.8)
 		end
-		if self.requestID then
-			local reqName = FlyoutBlessingName(self.requestID)
-			if self.blessingID == self.requestID then
-				GameTooltip:AddLine(string.format(L["requested: %s"], reqName), 0.6, 1, 0.6) -- honoured
-			else
-				GameTooltip:AddLine(string.format(L["requested: %s"], reqName), REQUEST_R, REQUEST_G, REQUEST_B)
-			end
+		if self.requestID and self.blessingID ~= self.requestID then
+			-- only when unfulfilled (yellow); a honoured request needs no line
+			GameTooltip:AddLine(string.format(L["requested: %s"], FlyoutBlessingName(self.requestID)), REQUEST_R, REQUEST_G, REQUEST_B)
 		end
-		GameTooltip:AddLine(L["left-click: cast — wheel: change — right-click: clear"], 0.8, 0.8, 0.8)
 		GameTooltip:Show()
 	end)
 	row:SetScript("OnLeave", function()

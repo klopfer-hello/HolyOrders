@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-19
+
+### Added
+- Salvation in parties: class preferences now include Salvation for DPS
+  roles, and multi-paladin parties plan each class's top preferences across
+  the paladins (e.g. two paladins → Kings/Wisdom/Might plus Salvation).
+
+### Changed
+- Cast bar buttons: left-click casts the planned blessing (greater when
+  planned), right-click always casts the 10-minute single on the same target.
+
 ## [0.4.0] - 2026-07-19
 
 ### Changed

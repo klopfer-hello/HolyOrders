@@ -78,3 +78,5 @@ L["force rebuff complete — all assigned buffs are fresh"] = "Zwangs-Rebuff abg
 L["plan broadcast to the group"] = "Plan an die Gruppe gesendet"
 L["plan is local — only your own assignments sync (lead/assist can broadcast all)"] = "Plan ist lokal — nur die eigenen Zuteilungen werden synchronisiert (Leiter/Assistent kann alles senden)"
 L["stored plan applied for this paladin roster"] = "Gespeicherter Plan für diese Paladin-Besetzung angewendet"
+L["stored plan for this roster available — '/ho plan apply' loads it (your unsaved edits are kept until then)"] = "Gespeicherter Plan für diese Besetzung verfügbar — '/ho plan apply' lädt ihn (ungespeicherte Änderungen bleiben bis dahin erhalten)"
+L["only lead/assist may flag others as tank"] = "Nur Leiter/Assistent dürfen andere als Tank markieren"

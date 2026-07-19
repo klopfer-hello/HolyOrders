@@ -128,6 +128,9 @@ local function UseGreater(assign, eligiblePlayers)
 	if not blessing or not blessing.greaterKnown then
 		return false
 	end
+	if HO.Data.SymbolCount() == 0 then
+		return false -- no Symbol of Kings: fall back to singles automatically
+	end
 	if assign.mode == "greater" then
 		return true
 	end

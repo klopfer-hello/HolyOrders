@@ -90,6 +90,18 @@ function Comm.CanBulk(editor)
 	return (entry and (entry.rank or 0) > 0) or not IsInGroup()
 end
 
+-- sender-side mirror of the receiver's TANK gate: self, lead/assist, or solo
+function Comm.CanFlagTank(name)
+	if not IsInGroup() then
+		return true
+	end
+	if name == me then
+		return true
+	end
+	local myEntry = HO.Roster.byName[me]
+	return (myEntry and (myEntry.rank or 0) > 0) or false
+end
+
 -- revisions -------------------------------------------------------------------
 
 local function Revs(plan)
@@ -452,10 +464,11 @@ handlers["LL"] = function(sender, payload)
 	if not idx then
 		return
 	end
-	HO.db.remoteLogs = HO.db.remoteLogs or {}
 	if idx <= 1 then
-		HO.db.remoteLogs[sender] = {}
+		-- keep only the most recent pull; remoteLogs must not grow forever
+		HO.db.remoteLogs = { [sender] = {} }
 	end
+	HO.db.remoteLogs = HO.db.remoteLogs or {}
 	local list = HO.db.remoteLogs[sender]
 	if list then
 		table.insert(list, entry)
@@ -502,8 +515,8 @@ end
 local protoWarned = {}
 
 HO.RegisterEvent("CHAT_MSG_ADDON", function(prefix, message, _, senderFull)
-	if prefix ~= PREFIX then
-		return
+	if prefix ~= PREFIX or not me then
+		return -- not ours, or before login init
 	end
 	local sender = senderFull and senderFull:match("^[^%-]+%-[^%-]+") or senderFull
 	local proto, msgType, payload = message:match("^(%d+):(%u+):?(.*)$")
@@ -538,12 +551,14 @@ local lastPallySig
 HO.RegisterEvent("PLAYER_LOGIN", function()
 	me = HO.FullName("player")
 	C_ChatInfo.RegisterAddonMessagePrefix(PREFIX)
+	local isPally = select(2, UnitClass("player")) == "PALADIN"
 	HO.Roster.OnChanged(function()
-		-- greet whenever the paladin composition changes
+		-- greet whenever the paladin composition changes; non-paladin
+		-- clients listen but never announce themselves as paladins
 		local sig = table.concat(HO.Roster.Paladins(), ";")
 		if sig ~= lastPallySig then
 			lastPallySig = sig
-			if Channel() then
+			if isPally and Channel() then
 				Comm.SendHello()
 				Comm.SendFull()
 			end

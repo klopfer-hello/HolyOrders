@@ -22,8 +22,17 @@ local function Notify()
 	end
 end
 
+local needsRescan = false
+
 local function AddEntry(unit, ownerEntry)
 	if not UnitExists(unit) then
+		return nil
+	end
+	-- during zoning UnitExists can be true while the name is still the
+	-- "Unknown" placeholder; such names must never reach plan signatures
+	local rawName = UnitName(unit)
+	if not rawName or rawName == (UNKNOWNOBJECT or "Unknown") then
+		needsRescan = true
 		return nil
 	end
 	local entry = {
@@ -87,6 +96,10 @@ function Roster.Rebuild()
 
 	HO.Log("roster", string.format("rebuild: %d units, paladins: %s", #Roster.units, table.concat(Roster.Paladins(), ";")))
 	Notify()
+	if needsRescan then
+		needsRescan = false
+		C_Timer.After(2, Roster.Queue)
+	end
 end
 
 -- case-insensitive lookup by full or realm-less name; returns fullName, entry

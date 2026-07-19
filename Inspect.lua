@@ -37,19 +37,28 @@ local function Pump()
 	if current or InCombatLockdown() then
 		return
 	end
-	while #queue > 0 do
+	if InspectFrame and InspectFrame:IsShown() then
+		return -- never fight the player's own inspect session
+	end
+	for _ = 1, #queue do
 		local name = table.remove(queue, 1)
 		queued[name] = nil
 		local entry = HO.Roster.byName[name]
-		local unit = entry and entry.unit
-		if unit and UnitIsConnected(unit) and CheckInteractDistance(unit, 1) and CanInspect(unit) then
-			attempts[name] = GetTime()
-			current = { name = name, unit = unit, class = entry.class }
-			current.timeoutTimer = C_Timer.NewTimer(TIMEOUT, function()
-				current = nil
-			end)
-			NotifyInspect(unit)
-			return
+		if entry and not HO.db.specCache[name] then
+			local unit = entry.unit
+			if unit and UnitIsConnected(unit) and CheckInteractDistance(unit, 1) and CanInspect(unit) then
+				attempts[name] = GetTime()
+				current = { name = name, unit = unit, class = entry.class }
+				current.timeoutTimer = C_Timer.NewTimer(TIMEOUT, function()
+					pcall(ClearInspectPlayer)
+					current = nil
+				end)
+				NotifyInspect(unit)
+				return
+			end
+			-- out of range right now: stay queued for a later tick
+			queued[name] = true
+			table.insert(queue, name)
 		end
 	end
 end
@@ -70,9 +79,11 @@ HO.RegisterEvent("INSPECT_READY", function(guid)
 		end
 	end
 	local spec = best and TAB_SPECS[current.class] and TAB_SPECS[current.class][best]
-	if spec and bestPoints >= MIN_POINTS and not HO.db.specCache[current.name] then
-		HO.db.specCache[current.name] = spec
-		HO.Log("inspect", current.name .. " inferred as " .. spec .. " (" .. bestPoints .. "p)")
+	if bestPoints >= MIN_POINTS and not HO.db.specCache[current.name] then
+		-- specs without a preference mapping (e.g. arms/fury) cache as
+		-- "other" so the member is not re-inspected forever
+		HO.db.specCache[current.name] = spec or "other"
+		HO.Log("inspect", current.name .. " inferred as " .. (spec or "other") .. " (" .. bestPoints .. "p)")
 	end
 	ClearInspectPlayer()
 	if current.timeoutTimer then

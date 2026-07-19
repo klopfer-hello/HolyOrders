@@ -124,7 +124,8 @@ HO.commands["plan"] = function(rest)
 	elseif sub == "delete" then
 		local index = tonumber(arg)
 		local item = index and storedList[index]
-		if item and HO.db.plans[item.sig] then
+		-- identity check: the list may be stale if the sig was re-saved
+		if item and HO.db.plans[item.sig] == item.plan then
 			HO.db.plans[item.sig] = nil
 			HO.Print("deleted plan " .. index .. " (" .. item.sig .. ")")
 		else
@@ -461,6 +462,10 @@ HO.commands["tank"] = function(rest)
 	target, entry = HO.Roster.Resolve(target)
 	if not entry then
 		HO.Print("target is not in the roster")
+		return
+	end
+	if HO.Comm and not HO.Comm.CanFlagTank(target) then
+		HO.Print("only lead/assist may flag others as tank")
 		return
 	end
 	local isTank = HO.Plan.ToggleTank(target)

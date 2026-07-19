@@ -431,6 +431,10 @@ function Window.Refresh()
 							.. (isTank and (" |cffff6060" .. L["[tank]"] .. "|r") or ""))
 						mrow.label:SetScript("OnClick", function(_, mouseBtn)
 							if mouseBtn == "RightButton" then
+								if HO.Comm and not HO.Comm.CanFlagTank(entry.name) then
+									HO.Print(L["only lead/assist may flag others as tank"])
+									return
+								end
 								local flagged = HO.Plan.ToggleTank(entry.name)
 								HO.Print(entry.name .. (flagged and " flagged as tank" or " unflagged as tank"))
 							else

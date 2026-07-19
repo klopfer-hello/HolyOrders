@@ -79,7 +79,18 @@ function Plan.Active()
 	if not HO.db.activePlan then
 		HO.db.activePlan = NewPlan()
 	end
-	return HO.db.activePlan
+	-- normalize: plans written by other addon versions must never nil-error
+	local plan = HO.db.activePlan
+	plan.class = plan.class or {}
+	plan.player = plan.player or {}
+	plan.tanks = plan.tanks or {}
+	plan.meta = plan.meta or { created = time() }
+	return plan
+end
+
+local function MarkDirty(plan)
+	plan.meta = plan.meta or {}
+	plan.meta.dirty = true
 end
 
 function Plan.SetClassAssignment(paladin, classToken, blessingID, mode)
@@ -93,6 +104,7 @@ function Plan.SetClassAssignment(paladin, classToken, blessingID, mode)
 		end
 		plan.class[paladin][classToken] = { id = blessingID, mode = mode or "auto" }
 	end
+	MarkDirty(plan)
 	if HO.Comm then
 		HO.Comm.OnClassEdited(paladin, classToken)
 	end
@@ -106,6 +118,7 @@ function Plan.SetPlayerOverride(paladin, targetName, blessingID)
 	else
 		plan.player[paladin][targetName] = blessingID
 	end
+	MarkDirty(plan)
 	if HO.Comm then
 		HO.Comm.OnOverrideEdited(paladin, targetName)
 	end
@@ -121,6 +134,7 @@ function Plan.ToggleTank(name)
 		plan.tanks[name] = true
 		flagged = true
 	end
+	MarkDirty(plan)
 	if HO.Comm then
 		HO.Comm.OnTankToggled(name, flagged)
 	end
@@ -228,11 +242,13 @@ function Plan.Save(label)
 	end
 	local stored = Copy(Plan.Active())
 	stored.meta.lastUsed = time()
+	stored.meta.dirty = nil
 	if label and label ~= "" then
 		stored.meta.name = label
 	end
 	HO.db.plans[sig] = stored
 	HO.db.activeSignature = sig
+	Plan.Active().meta.dirty = nil -- saved: no unsaved edits anymore
 	Prune()
 	HO.Log("plan", "saved plan for " .. sig .. (label and label ~= "" and (" as '" .. label .. "'") or ""))
 	return sig
@@ -257,7 +273,17 @@ local function OnRosterChanged()
 	end
 	local stored = HO.db.plans[sig]
 	if stored then
+		-- never silently overwrite unsaved edits; offer the plan instead
+		local active = Plan.Active()
+		if active.meta and active.meta.dirty then
+			HO.db.activeSignature = sig
+			Plan.suggestion = sig
+			HO.Log("plan", "stored plan for " .. sig .. " offered (unsaved edits present)")
+			HO.Print(L("stored plan for this roster available — '/ho plan apply' loads it (your unsaved edits are kept until then)"))
+			return
+		end
 		HO.db.activePlan = Copy(stored)
+		HO.db.activePlan.meta.dirty = nil
 		HO.db.activeSignature = sig
 		stored.meta.lastUsed = time()
 		Plan.suggestion = nil
@@ -297,6 +323,7 @@ function Plan.ApplySuggestion()
 		return false
 	end
 	HO.db.activePlan = Copy(stored)
+	HO.db.activePlan.meta.dirty = nil
 	HO.db.activeSignature = Plan.CurrentSignature()
 	stored.meta.lastUsed = time()
 	Plan.suggestion = nil

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-19
+
+First shareable pre-release: full solo workflow plus multi-paladin sync.
+For WoW Classic TBC Anniversary (2.5.6). Not yet battle-tested in raids.
+
 ### Added
 - Project scaffold.
 - Blessing data with runtime spellbook resolution (locale-safe, no rank tables).

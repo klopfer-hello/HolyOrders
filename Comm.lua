@@ -8,9 +8,20 @@ local Comm = {}
 HO.Comm = Comm
 
 local PREFIX = "HolyOrders"
-local PROTO = "1"
+local PROTO = "2"
 local SET_DELAY = 1.0
 local HELLO_DELAY = 2.0
+local MAX_MSG = 250 -- WoW addon messages cap at 255 bytes
+
+-- compact wire encoding: class tokens and modes as single characters so a
+-- full row stays far below the message size cap
+local CLASS_CODE = { WARRIOR = "W", PALADIN = "P", HUNTER = "H", ROGUE = "R", PRIEST = "I", SHAMAN = "S", MAGE = "M", WARLOCK = "L", DRUID = "D" }
+local CODE_CLASS = {}
+for token, code in pairs(CLASS_CODE) do
+	CODE_CLASS[code] = token
+end
+local MODE_CODE = { auto = "a", greater = "g", normal = "n" }
+local CODE_MODE = { a = "auto", g = "greater", n = "normal" }
 
 Comm.peers = {} -- [fullName] = { version, openEdit, caps = {[id]={known,greater,talent}}, greeted }
 Comm.suspended = false -- true while the planner bulk-edits (PLANAPPLY follows)
@@ -37,7 +48,12 @@ local function Send(msg, channel, target)
 	if HO.db and HO.db.options.trace then
 		HO.Log("tx", channel .. (target and ("/" .. target) or "") .. " " .. msg:sub(1, 120))
 	end
-	C_ChatInfo.SendAddonMessage(PREFIX, PROTO .. ":" .. msg, channel, target)
+	local wire = PROTO .. ":" .. msg
+	if #wire > MAX_MSG then
+		HO.Log("comm", "OVERSIZED message dropped (" .. #wire .. "b): " .. wire:sub(1, 60))
+		return
+	end
+	C_ChatInfo.SendAddonMessage(PREFIX, wire, channel, target)
 end
 
 -- debounced sends: one pending timer per key, payload captured at queue time
@@ -103,7 +119,10 @@ local function SerializeRow(owner)
 	local plan = HO.Plan.Active()
 	local classParts = {}
 	for classToken, a in pairs(plan.class[owner] or {}) do
-		table.insert(classParts, classToken .. "=" .. a.id .. "." .. a.mode)
+		local code = CLASS_CODE[classToken]
+		if code then
+			table.insert(classParts, code .. a.id .. (MODE_CODE[a.mode] or "a"))
+		end
 	end
 	table.sort(classParts)
 	local ovParts = {}
@@ -141,9 +160,10 @@ local function ApplyRow(payload, sender)
 	local class = {}
 	if classCsv and classCsv ~= "" then
 		for pair in string.gmatch(classCsv, "[^|]+") do
-			local token, id, mode = pair:match("^(%u+)=(%d+)%.(%a+)$")
+			local code, id, modeCode = pair:match("^(%u)(%d)(%a)$")
+			local token = code and CODE_CLASS[code]
 			if token and HO.Data.blessings[tonumber(id)] then
-				class[token] = { id = tonumber(id), mode = mode }
+				class[token] = { id = tonumber(id), mode = CODE_MODE[modeCode] or "auto" }
 			end
 		end
 	end
@@ -180,8 +200,8 @@ function Comm.OnClassEdited(owner, classToken)
 	local plan = HO.Plan.Active()
 	local rev = BumpRev(owner)
 	local a = plan.class[owner] and plan.class[owner][classToken]
-	local msg = "SC:" .. owner .. ";" .. rev .. ";" .. classToken .. ";"
-		.. (a and a.id or 0) .. ";" .. (a and a.mode or "auto")
+	local msg = "SC:" .. owner .. ";" .. rev .. ";" .. (CLASS_CODE[classToken] or "?") .. ";"
+		.. (a and a.id or 0) .. ";" .. (a and MODE_CODE[a.mode] or "a")
 	QueueSend("SC:" .. owner .. ":" .. classToken, msg)
 end
 
@@ -291,9 +311,11 @@ handlers["F"] = function(sender, payload)
 end
 
 handlers["SC"] = function(sender, payload)
-	local owner, rev, classToken, id, mode = strsplit(";", payload)
+	local owner, rev, classCode, id, modeCode = strsplit(";", payload)
+	local classToken = classCode and CODE_CLASS[classCode]
+	local mode = modeCode and CODE_MODE[modeCode] or "auto"
 	rev, id = tonumber(rev), tonumber(id)
-	if not owner or not rev or not id then
+	if not owner or not rev or not id or not classToken then
 		return
 	end
 	if not Comm.CanEdit(sender, owner) then

@@ -68,7 +68,9 @@ end
 local function CreateButton(index)
 	local btn = CreateFrame("Button", "HolyOrdersBarButton" .. index, bar, "SecureActionButtonTemplate")
 	btn:SetSize(BUTTON_SIZE, BUTTON_SIZE)
-	btn:RegisterForClicks("AnyUp")
+	-- modern clients fire secure actions on the edge selected by the
+	-- ActionButtonUseKeyDown cvar; register both so the click always lands
+	btn:RegisterForClicks("AnyDown", "AnyUp")
 	btn:SetAttribute("type", "spell")
 
 	btn.bg = btn:CreateTexture(nil, "BACKGROUND")

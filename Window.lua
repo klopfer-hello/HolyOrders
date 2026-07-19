@@ -484,13 +484,10 @@ function Window.Create()
 	win.header.title:SetPoint("LEFT", 10, 0)
 	win.header.title:SetText(L["HolyOrders — Assignments"])
 
-	-- expand/collapse-all toggle: sits at the top of the NAME column, in the
-	-- column-header band just above the first class row and aligned with the
-	-- per-class "+"/"-" toggles that lead each class row, so it reads as
-	-- "toggle all of these" rather than as a header button
-	win.expandBtn = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
-	win.expandBtn:SetSize(20, 18)
-	win.expandBtn:SetPoint("TOPLEFT", win, "TOPLEFT", 6, -(HEADER_H + 2))
+	-- expand/collapse-all toggle: sits in the header row, just left of the
+	-- No Salv button (anchored below, once that button exists)
+	win.expandBtn = CreateFrame("Button", nil, win.header, "UIPanelButtonTemplate")
+	win.expandBtn:SetSize(24, 20)
 	win.expandBtn:SetText("+")
 	win.expandBtn:SetScript("OnClick", ToggleExpandAll)
 	win.expandBtn:SetScript("OnEnter", function(self)
@@ -539,6 +536,8 @@ function Window.Create()
 	win.salvBtn = HeaderButton("No Salv", -222, function()
 		HO.commands["nosalv"]("")
 	end, L["Encounter toggle: swap Salvation for substitutes, click again to restore the previous plan (lead/assist)"])
+	-- place the expand/collapse-all toggle just left of the No Salv button
+	win.expandBtn:SetPoint("RIGHT", win.salvBtn, "LEFT", -6, 0)
 
 	win.colHeader = {}
 	win.hint = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")

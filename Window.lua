@@ -477,6 +477,20 @@ end
 
 -- layout ----------------------------------------------------------------------
 
+-- expand a class row (so its member rows and their override cells are shown) and
+-- refresh. Called when an edit elsewhere — the cast-bar fly-out — changes a
+-- member override, so the change is visible instead of hidden under a collapsed
+-- class row (a per-member override only appears in the expanded member row).
+function Window.Expand(classToken)
+	if not classToken then
+		return
+	end
+	expanded[classToken] = true
+	if win and win:IsShown() then
+		Window.Refresh()
+	end
+end
+
 function Window.Refresh()
 	if not win or not win:IsShown() then
 		return

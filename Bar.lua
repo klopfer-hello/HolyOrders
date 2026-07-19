@@ -350,10 +350,16 @@ local function ApplyMemberOverride(memberName, isPet, newID)
 		HO.Plan.SetMemberPref(memberName, (newID and newID ~= 0) and newID or nil)
 	end
 	-- Bar.Refresh recomputes the engine and re-renders the fly-out (via its hook);
-	-- refresh the window too so an open assignment grid stays in sync
+	-- keep the window in sync too. A fly-out edit is a per-member OVERRIDE, which
+	-- only shows in the window's expanded member row — so expand that class so the
+	-- change is actually visible, not silently hidden under a collapsed row.
 	Bar.Refresh()
-	if HO.Window and HO.Window.Refresh then
-		HO.Window.Refresh()
+	if HO.Window then
+		if HO.Window.Expand and flyoutClass then
+			HO.Window.Expand(flyoutClass)
+		elseif HO.Window.Refresh then
+			HO.Window.Refresh()
+		end
 	end
 end
 

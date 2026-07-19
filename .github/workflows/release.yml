@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive and validate version
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          TOC_VERSION=$(sed -n 's/^## Version:[[:space:]]*//p' HolyOrders.toc | tr -d '\r')
+          if [ "$TOC_VERSION" != "$VERSION" ]; then
+            echo "TOC version ($TOC_VERSION) does not match tag ($VERSION)" >&2
+            exit 1
+          fi
+
+      - name: Build addon zip
+        run: |
+          mkdir -p dist/HolyOrders
+          cp *.lua *.toc LICENSE README.md CHANGELOG.md dist/HolyOrders/
+          cp -r Icons dist/HolyOrders/Icons
+          cd dist
+          zip -r "HolyOrders-v${{ steps.version.outputs.version }}.zip" HolyOrders
+
+      - name: Extract changelog section
+        run: |
+          awk -v ver="${{ steps.version.outputs.version }}" '
+            $0 ~ "^## \\[" ver "\\]" { flag=1; next }
+            flag && /^## \[/ { exit }
+            flag { print }
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "No CHANGELOG.md section found for version ${{ steps.version.outputs.version }}" >&2
+            exit 1
+          fi
+          cat release-notes.md
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/HolyOrders-v${{ steps.version.outputs.version }}.zip" \
+            --title "HolyOrders v${{ steps.version.outputs.version }}" \
+            --notes-file release-notes.md

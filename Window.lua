@@ -310,18 +310,24 @@ function Window.Refresh()
 		win.colHeader[c]:Hide()
 	end
 
-	-- group roster members by class
-	local members = {} -- [classToken] = { entry, ... } (players only)
+	-- group roster members and pets by class
+	local members = {} -- [classToken] = { playerEntry, ... }
+	local petsByClass = {} -- [classToken] = { petEntry, ... }
 	for _, entry in ipairs(HO.Roster.units) do
-		if not entry.isPet and entry.class and entry.name then
-			members[entry.class] = members[entry.class] or {}
-			table.insert(members[entry.class], entry)
+		if entry.class and entry.name then
+			local bucket = entry.isPet and petsByClass or members
+			bucket[entry.class] = bucket[entry.class] or {}
+			table.insert(bucket[entry.class], entry)
 		end
 	end
+	local function SortByName(a, b)
+		return (a.name or "") < (b.name or "")
+	end
 	for _, list in pairs(members) do
-		table.sort(list, function(a, b)
-			return (a.name or "") < (b.name or "")
-		end)
+		table.sort(list, SortByName)
+	end
+	for _, list in pairs(petsByClass) do
+		table.sort(list, SortByName)
 	end
 
 	local y = HEADER_H + 20
@@ -329,13 +335,17 @@ function Window.Refresh()
 
 	for _, classToken in ipairs(CLASS_ORDER) do
 		local list = members[classToken]
-		if list then
+		local petList = petsByClass[classToken]
+		if list or petList then
+			local playerCount = list and #list or 0
+			local petCount = petList and #petList or 0
 			classIndex = classIndex + 1
 			local row = AcquireRow(classRows, classIndex, ROW_H)
 			row:ClearAllPoints()
 			row:SetPoint("TOPLEFT", win, "TOPLEFT", 0, -y)
 			row:SetPoint("TOPRIGHT", win, "TOPRIGHT", 0, -y)
-			row.label.text:SetText((expanded[classToken] and "- " or "+ ") .. classToken .. " (" .. #list .. ")")
+			row.label.text:SetText((expanded[classToken] and "- " or "+ ") .. classToken
+				.. " (" .. playerCount .. (petCount > 0 and ("+" .. petCount .. " pets") or "") .. ")")
 			row.label:SetScript("OnClick", function()
 				expanded[classToken] = not expanded[classToken] or nil
 				Window.Refresh()
@@ -343,7 +353,7 @@ function Window.Refresh()
 			for c = 1, numCols do
 				local cell = RowCell(row, c, ClassCellClick)
 				cell.pally, cell.classToken, cell.memberName = pallys[c], classToken, nil
-				cell.memberCount = #list
+				cell.memberCount = playerCount
 				local cur = plan.class[pallys[c]] and plan.class[pallys[c]][classToken]
 				if cur then
 					cell.icon:SetTexture(HO.Data.blessings[cur.id] and HO.Data.blessings[cur.id].icon or EMPTY_SLOT)
@@ -363,40 +373,57 @@ function Window.Refresh()
 			y = y + ROW_H
 
 			if expanded[classToken] then
-				for _, entry in ipairs(list) do
+				local rows = {}
+				if list then
+					for _, e in ipairs(list) do
+						table.insert(rows, e)
+					end
+				end
+				if petList then
+					for _, e in ipairs(petList) do
+						table.insert(rows, e)
+					end
+				end
+				for _, entry in ipairs(rows) do
 					memberIndex = memberIndex + 1
 					local mrow = AcquireRow(memberRows, memberIndex, MEMBER_ROW_H)
 					mrow:ClearAllPoints()
 					mrow:SetPoint("TOPLEFT", win, "TOPLEFT", 14, -y)
 					mrow:SetPoint("TOPRIGHT", win, "TOPRIGHT", 0, -y)
-					local isTank = HO.Plan.IsTank(entry.name, entry.tankRole)
-					local spec = HO.db.specCache[entry.name]
 					local short = entry.name:match("^([^%-]+)") or entry.name
-					mrow.label.text:SetText(short
-						.. (spec and (" |cff9d9d9d(" .. spec .. ")|r") or "")
-						.. (isTank and " |cffff6060[tank]|r" or ""))
-					mrow.memberName = entry.name
-					mrow.label:SetScript("OnClick", function(_, mouseBtn)
-						if mouseBtn == "RightButton" then
-							local flagged = HO.Plan.ToggleTank(entry.name)
-							HO.Print(entry.name .. (flagged and " flagged as tank" or " unflagged as tank"))
-						else
-							-- cycle spec tag: none -> spec1 -> spec2 -> none
-							local specs = HO.Planner.ValidSpecs(entry.class)
-							if #specs > 0 then
-								local cur = HO.db.specCache[entry.name]
-								local nextSpec = specs[1]
-								for i, s in ipairs(specs) do
-									if s == cur then
-										nextSpec = specs[i + 1]
-										break
+					if entry.isPet then
+						local ownerShort = entry.owner and (entry.owner:match("^([^%-]+)") or entry.owner) or "?"
+						mrow.label.text:SetText(short .. " |cff9d9d9d(pet of " .. ownerShort .. ")|r")
+						mrow.label:SetScript("OnClick", nil)
+					else
+						local isTank = HO.Plan.IsTank(entry.name, entry.tankRole)
+						local spec = HO.db.specCache[entry.name]
+						mrow.label.text:SetText(short
+							.. (spec and (" |cff9d9d9d(" .. spec .. ")|r") or "")
+							.. (isTank and " |cffff6060[tank]|r" or ""))
+						mrow.label:SetScript("OnClick", function(_, mouseBtn)
+							if mouseBtn == "RightButton" then
+								local flagged = HO.Plan.ToggleTank(entry.name)
+								HO.Print(entry.name .. (flagged and " flagged as tank" or " unflagged as tank"))
+							else
+								-- cycle spec tag: none -> spec1 -> spec2 -> none
+								local specs = HO.Planner.ValidSpecs(entry.class)
+								if #specs > 0 then
+									local cur = HO.db.specCache[entry.name]
+									local nextSpec = specs[1]
+									for i, s in ipairs(specs) do
+										if s == cur then
+											nextSpec = specs[i + 1]
+											break
+										end
 									end
+									HO.db.specCache[entry.name] = nextSpec
 								end
-								HO.db.specCache[entry.name] = nextSpec
 							end
-						end
-						RefreshAll()
-					end)
+							RefreshAll()
+						end)
+					end
+					mrow.memberName = entry.name
 					mrow.label:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 					for c = 1, numCols do
 						local cell = RowCell(mrow, c, MemberCellClick)

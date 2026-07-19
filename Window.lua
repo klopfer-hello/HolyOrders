@@ -123,6 +123,46 @@ local function RefreshAll()
 	HO.Bar.Refresh()
 end
 
+-- classes currently present in the roster (a class button/row is shown for each);
+-- pets count under their owner's class, matching the class-row presence rule
+local function PresentClasses()
+	local set = {}
+	for _, entry in ipairs(HO.Roster.units) do
+		if entry.name then
+			local class = entry.class
+			if entry.isPet then
+				local owner = entry.owner and HO.Roster.byName[entry.owner]
+				class = (owner and owner.class) or class
+			end
+			if class then
+				set[class] = true
+			end
+		end
+	end
+	return set
+end
+
+-- one button toggles every class open/closed: if any present class is collapsed,
+-- expand them all; otherwise collapse everything
+local function ToggleExpandAll()
+	local present = PresentClasses()
+	local anyCollapsed = false
+	for class in pairs(present) do
+		if not expanded[class] then
+			anyCollapsed = true
+			break
+		end
+	end
+	if anyCollapsed then
+		for class in pairs(present) do
+			expanded[class] = true
+		end
+	else
+		wipe(expanded)
+	end
+	Window.Refresh()
+end
+
 -- cell click handlers ---------------------------------------------------------
 
 local function MayEdit(pally)
@@ -430,8 +470,21 @@ function Window.Create()
 	win.header.bg = win.header:CreateTexture(nil, "BACKGROUND")
 	win.header.bg:SetAllPoints()
 	win.header.bg:SetColorTexture(0.94, 0.78, 0.09, 0.18)
+	-- small expand/collapse-all toggle on the left, before the title
+	win.expandBtn = CreateFrame("Button", nil, win.header, "UIPanelButtonTemplate")
+	win.expandBtn:SetSize(24, 20)
+	win.expandBtn:SetPoint("LEFT", win.header, "LEFT", 6, 0)
+	win.expandBtn:SetText("+")
+	win.expandBtn:SetScript("OnClick", ToggleExpandAll)
+	win.expandBtn:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:SetText(L["expand or collapse all classes"], 1, 1, 1)
+		GameTooltip:Show()
+	end)
+	win.expandBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
 	win.header.title = win.header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	win.header.title:SetPoint("LEFT", 10, 0)
+	win.header.title:SetPoint("LEFT", 36, 0)
 	win.header.title:SetText(L["HolyOrders — Assignments"])
 
 	-- parent the close button to the window, not the header: the template's
@@ -503,6 +556,19 @@ function Window.Refresh()
 	local plan = HO.Plan.Active()
 	local pallys = HO.Roster.Paladins()
 	local numCols = math.min(#pallys, MAX_COLS)
+
+	-- reflect the expand/collapse-all state on its toggle ("-" = all open)
+	if win.expandBtn then
+		local present, allExpanded, hasAny = PresentClasses(), true, false
+		for class in pairs(present) do
+			hasAny = true
+			if not expanded[class] then
+				allExpanded = false
+				break
+			end
+		end
+		win.expandBtn:SetText((hasAny and allExpanded) and "-" or "+")
+	end
 
 	if win.salvBtn then
 		local active = HO.Plan.NoSalvationActive() or HO.db.noSalvBy

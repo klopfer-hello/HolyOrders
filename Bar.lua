@@ -17,6 +17,46 @@ local CLASS_ORDER = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN
 
 local bar, handle, ticker
 local buttons = {}
+local lastGrow
+
+-- arranges handle and buttons for the configured growth direction; must only
+-- run out of combat (buttons are protected frames)
+local function LayoutBar()
+	local grow = HO.db.options.bar and HO.db.options.bar.grow or "right"
+	local horizontal = (grow == "left" or grow == "right")
+	local length = HANDLE_WIDTH + GAP + MAX_BUTTONS * (BUTTON_SIZE + GAP)
+	if horizontal then
+		bar:SetSize(length, BUTTON_SIZE + 4)
+		handle:SetSize(HANDLE_WIDTH, BUTTON_SIZE)
+	else
+		bar:SetSize(BUTTON_SIZE + 4, length)
+		handle:SetSize(BUTTON_SIZE, HANDLE_WIDTH)
+	end
+	handle:ClearAllPoints()
+	if grow == "right" then
+		handle:SetPoint("LEFT", bar, "LEFT", 0, 0)
+	elseif grow == "left" then
+		handle:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
+	elseif grow == "down" then
+		handle:SetPoint("TOP", bar, "TOP", 0, 0)
+	else -- up
+		handle:SetPoint("BOTTOM", bar, "BOTTOM", 0, 0)
+	end
+	for i, btn in ipairs(buttons) do
+		local offset = HANDLE_WIDTH + GAP + (i - 1) * (BUTTON_SIZE + GAP)
+		btn:ClearAllPoints()
+		if grow == "right" then
+			btn:SetPoint("LEFT", bar, "LEFT", offset, 0)
+		elseif grow == "left" then
+			btn:SetPoint("RIGHT", bar, "RIGHT", -offset, 0)
+		elseif grow == "down" then
+			btn:SetPoint("TOP", bar, "TOP", 0, -offset)
+		else
+			btn:SetPoint("BOTTOM", bar, "BOTTOM", 0, offset)
+		end
+	end
+	lastGrow = grow
+end
 
 local function BarOptions()
 	HO.db.options.bar = HO.db.options.bar or {}
@@ -135,7 +175,6 @@ function Bar.Create()
 		return
 	end
 	bar = CreateFrame("Frame", "HolyOrdersBar", UIParent)
-	bar:SetSize(HANDLE_WIDTH + GAP + MAX_BUTTONS * (BUTTON_SIZE + GAP), BUTTON_SIZE + 4)
 	bar:SetMovable(true)
 	bar:SetClampedToScreen(true)
 	bar:SetFrameStrata("HIGH") -- above raid frames (VuhDo etc.)
@@ -180,10 +219,10 @@ function Bar.Create()
 
 	for i = 1, MAX_BUTTONS do
 		local btn = CreateButton(i)
-		btn:SetPoint("LEFT", bar, "LEFT", HANDLE_WIDTH + GAP + (i - 1) * (BUTTON_SIZE + GAP), 0)
 		btn:Hide()
 		buttons[i] = btn
 	end
+	LayoutBar()
 	RestorePosition()
 	bar:Hide()
 end
@@ -225,6 +264,10 @@ function Bar.Refresh()
 			end
 		end
 		return
+	end
+
+	if (BarOptions().grow or "right") ~= lastGrow then
+		LayoutBar()
 	end
 
 	local index = 0

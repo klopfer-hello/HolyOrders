@@ -252,8 +252,21 @@ HO.commands["bar"] = function(rest)
 	elseif sub == "reset" then
 		HO.Bar.ResetPosition()
 		HO.Print("bar position reset")
+	elseif sub:match("^grow") then
+		local dir = sub:match("^grow%s+(%a+)$")
+		if dir == "left" or dir == "right" or dir == "up" or dir == "down" then
+			opts.grow = dir
+			if InCombatLockdown() then
+				HO.Print("bar grows " .. dir .. " (applies after combat)")
+			else
+				HO.Bar.Refresh()
+				HO.Print("bar grows " .. dir)
+			end
+		else
+			HO.Print("usage: /ho bar grow left|right|up|down")
+		end
 	else
-		HO.Print("usage: /ho bar lock|unlock|show|hide|reset")
+		HO.Print("usage: /ho bar lock|unlock|show|hide|reset|grow <dir>")
 	end
 end
 

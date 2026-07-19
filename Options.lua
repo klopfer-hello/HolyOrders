@@ -5,6 +5,7 @@ local Options = {}
 HO.Options = Options
 
 local PET_CYCLE = { 2, 1, 3 } -- Might > Wisdom > Kings
+local GROW_CYCLE = { "right", "left", "down", "up" }
 
 local frame
 local checks = {}
@@ -28,6 +29,7 @@ local function Refresh()
 	end
 	local blessing = HO.Data.blessings[o.pets.blessing or 2]
 	frame.petBtn:SetText("Pet blessing: " .. (blessing and (blessing.name or blessing.key) or "?"))
+	frame.growBtn:SetText("Bar grows: " .. (o.bar.grow or "right"))
 end
 
 ITEMS = {
@@ -46,7 +48,7 @@ function Options.Create()
 	end
 	frame = CreateFrame("Frame", "HolyOrdersOptions", UIParent)
 	frame:SetFrameStrata("DIALOG")
-	frame:SetSize(330, 60 + #ITEMS * 26 + 46)
+	frame:SetSize(330, 60 + #ITEMS * 26 + 74)
 	frame:SetPoint("CENTER")
 	frame:SetMovable(true)
 	frame:SetClampedToScreen(true)
@@ -90,6 +92,23 @@ function Options.Create()
 		end)
 		checks[i] = check
 	end
+
+	frame.growBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+	frame.growBtn:SetSize(220, 22)
+	frame.growBtn:SetPoint("BOTTOMLEFT", 12, 40)
+	frame.growBtn:SetScript("OnClick", function()
+		local o = Options.Ensure()
+		local nextDir = GROW_CYCLE[1]
+		for i, dir in ipairs(GROW_CYCLE) do
+			if dir == (o.bar.grow or "right") then
+				nextDir = GROW_CYCLE[i + 1] or GROW_CYCLE[1]
+				break
+			end
+		end
+		o.bar.grow = nextDir
+		Refresh()
+		HO.Bar.Refresh()
+	end)
 
 	frame.petBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 	frame.petBtn:SetSize(220, 22)

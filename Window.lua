@@ -19,6 +19,9 @@ local PAD = 8
 local MAX_COLS = 8
 local LABEL_INDENT = 14 -- member-row label indent (rows themselves stay aligned)
 local HEADER_MAX_CHARS = 5
+local MAX_WIN_H = 700 -- height clamp; taller rosters scroll via the mouse wheel
+local BOTTOM_PAD = 38 -- reserved space under the last row for the hint lines
+local FIRST_ROW_OFFSET = 20 -- gap between the column headers and the first row
 
 local CLASS_ORDER = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
 local MODE_TAG = { auto = "|cff9d9d9da|r", greater = "|cffffd100G|r", normal = "|cffffffffn|r" }
@@ -27,6 +30,7 @@ local EMPTY_SLOT = "Interface\\PaperDoll\\UI-Backpack-EmptySlot"
 local win
 local expanded = {} -- [classToken] = true
 local classRows, memberRows = {}, {}
+local scrollOffset = 0 -- pixels scrolled down; clamped in Window.Refresh
 
 -- helpers ---------------------------------------------------------------------
 
@@ -264,6 +268,16 @@ function Window.Create()
 	win:SetMovable(true)
 	win:SetClampedToScreen(true)
 	win:EnableMouse(true)
+	win:EnableMouseWheel(true)
+	win:SetScript("OnMouseWheel", function(_, delta)
+		-- wheel scrolls whole rows; cell/label child buttons don't register the
+		-- wheel, so the event propagates up here. Refresh re-clamps the offset.
+		scrollOffset = scrollOffset - delta * 3 * ROW_H
+		if scrollOffset < 0 then
+			scrollOffset = 0
+		end
+		Window.Refresh()
+	end)
 	win:SetPoint("CENTER")
 	win:Hide()
 	table.insert(UISpecialFrames, "HolyOrdersWindow")
@@ -394,8 +408,9 @@ function Window.Refresh()
 		table.sort(list, SortByName)
 	end
 
-	local y = HEADER_H + 20
+	local y = HEADER_H + FIRST_ROW_OFFSET
 	local classIndex, memberIndex = 0, 0
+	local placed = {} -- { {frame, y, h}, ... } positioned after contentHeight is known
 
 	for _, classToken in ipairs(CLASS_ORDER) do
 		local list = members[classToken]
@@ -405,9 +420,7 @@ function Window.Refresh()
 			local petCount = petList and #petList or 0
 			classIndex = classIndex + 1
 			local row = AcquireRow(classRows, classIndex, ROW_H)
-			row:ClearAllPoints()
-			row:SetPoint("TOPLEFT", win, "TOPLEFT", 0, -y)
-			row:SetPoint("TOPRIGHT", win, "TOPRIGHT", 0, -y)
+			placed[#placed + 1] = { frame = row, y = y, h = ROW_H }
 			row.label.text:SetText((expanded[classToken] and "- " or "+ ") .. classToken
 				.. " (" .. playerCount .. (petCount > 0 and ("+" .. petCount .. " pets") or "") .. ")")
 			row.label:SetScript("OnClick", function()
@@ -433,7 +446,6 @@ function Window.Refresh()
 			for c = numCols + 1, #row.cells do
 				row.cells[c]:Hide()
 			end
-			row:Show()
 			y = y + ROW_H
 
 			if expanded[classToken] then
@@ -451,9 +463,7 @@ function Window.Refresh()
 				for _, entry in ipairs(rows) do
 					memberIndex = memberIndex + 1
 					local mrow = AcquireRow(memberRows, memberIndex, MEMBER_ROW_H, LABEL_INDENT)
-					mrow:ClearAllPoints()
-					mrow:SetPoint("TOPLEFT", win, "TOPLEFT", 0, -y)
-					mrow:SetPoint("TOPRIGHT", win, "TOPRIGHT", 0, -y)
+					placed[#placed + 1] = { frame = mrow, y = y, h = MEMBER_ROW_H }
 					local short = entry.name:match("^([^%-]+)") or entry.name
 					if entry.isPet then
 						local ownerShort = entry.owner and (entry.owner:match("^([^%-]+)") or entry.owner) or "?"
@@ -535,7 +545,6 @@ function Window.Refresh()
 					for c = numCols + 1, #mrow.cells do
 						mrow.cells[c]:Hide()
 					end
-					mrow:Show()
 					y = y + MEMBER_ROW_H
 				end
 			end
@@ -548,7 +557,37 @@ function Window.Refresh()
 		memberRows[i]:Hide()
 	end
 
-	win:SetSize(math.max(NAME_W + numCols * COL_W + PAD, 520), y + 38)
+	-- virtual scroll: clamp the window to MAX_WIN_H and shift every row by
+	-- scrollOffset, hiding any that would fall into the fixed header area or past
+	-- the visible bottom. Headers and the top button bar are not in `placed`, so
+	-- they stay fixed. When the content fits, offset is forced to 0 (show all).
+	local contentHeight = y
+	local viewHeight = math.min(contentHeight, MAX_WIN_H)
+	local scrolling = contentHeight > viewHeight
+	if scrolling then
+		local maxOffset = contentHeight - viewHeight
+		if scrollOffset < 0 then
+			scrollOffset = 0
+		elseif scrollOffset > maxOffset then
+			scrollOffset = maxOffset
+		end
+	else
+		scrollOffset = 0
+	end
+	local firstRowY = HEADER_H + FIRST_ROW_OFFSET
+	for _, p in ipairs(placed) do
+		local top = p.y - scrollOffset
+		p.frame:ClearAllPoints()
+		p.frame:SetPoint("TOPLEFT", win, "TOPLEFT", 0, -top)
+		p.frame:SetPoint("TOPRIGHT", win, "TOPRIGHT", 0, -top)
+		if scrolling and (top < firstRowY or top + p.h > viewHeight) then
+			p.frame:Hide()
+		else
+			p.frame:Show()
+		end
+	end
+
+	win:SetSize(math.max(NAME_W + numCols * COL_W + PAD, 520), viewHeight + BOTTOM_PAD)
 
 	-- a tooltip open over a cell now describes a repurposed cell; a single
 	-- owner check re-renders it (or hides it if the cell went away)

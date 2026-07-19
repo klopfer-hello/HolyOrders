@@ -13,4 +13,5 @@ Roster.lua
 Plan.lua
 Planner.lua
 Engine.lua
+Bar.lua
 Commands.lua

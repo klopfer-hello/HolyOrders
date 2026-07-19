@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-19
+
+### Changed
+- Sync protocol v2: compact wire encoding (single-character class/mode codes,
+  ~4x smaller rows) keeps every message safely under WoW's 255-byte addon
+  message cap; oversized messages are refused and logged instead of silently
+  lost. Protocol v1 clients (0.3.0 and older) are ignored — update everyone.
+
 ## [0.3.0] - 2026-07-19
 
 ### Added

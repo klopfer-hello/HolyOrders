@@ -2,7 +2,7 @@
 ## Title: HolyOrders
 ## Notes: Paladin blessing coordination — persistent plans, reliable sync
 ## Author: Klopfer-Hello
-## Version: 0.3.0
+## Version: 0.4.0
 ## IconTexture: Interface/AddOns/HolyOrders/Icons/HolyOrders
 ## DefaultState: enabled
 ## SavedVariables: HolyOrdersDB

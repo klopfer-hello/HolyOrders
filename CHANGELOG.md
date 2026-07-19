@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-07-19
+
+Results of a full adversarial code review before v1.0.
+
+### Fixed
+- A Lua error inside the auto-planner could silently disable ALL outgoing
+  sync for the rest of the session; the bulk-edit suspension is now
+  error-safe.
+- Pet buffing was broken for common raid compositions (pets were tied to
+  their pseudo-class needing a player row, and player eligibility rules
+  excluded them); pet duties now follow the OWNER's class everywhere.
+- Auto-overrides concentrated on one paladin and could push their sync row
+  over the message size cap (silent loss); they are now spread round-robin.
+- Roster changes could silently overwrite unsaved plan edits with a stored
+  plan; unsaved edits are now kept and the stored plan offered instead.
+- Tank flagging is lead/assist-gated on the sender side too (was silently
+  rejected by receivers, desyncing plans).
+- Spec inspection no longer starves for members who come into range later,
+  no longer fights the Blizzard inspect window, cleans up its session on
+  timeout, and stops re-inspecting specs without preference mappings.
+- "Unknown" placeholder names during zoning can no longer poison roster
+  signatures and stored plan keys (rescan is scheduled instead).
+- Greater blessings automatically fall back to singles with zero Symbols of
+  Kings; non-lead Auto now says the plan stays local and syncs at least the
+  own row; various smaller hardening fixes (early-message guard, stale
+  plan-list deletes, remote-log growth).
+
+### Changed
+- Settings and plans are now stored PER CHARACTER (paladin alts no longer
+  overwrite each other). Existing account-wide data is not migrated —
+  re-apply your few settings once after updating.
+
 ## [0.15.1] - 2026-07-19
 
 ### Fixed

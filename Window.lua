@@ -338,8 +338,14 @@ function Window.Refresh()
 	for _, entry in ipairs(HO.Roster.units) do
 		if entry.class and entry.name then
 			local bucket = entry.isPet and petsByClass or members
-			bucket[entry.class] = bucket[entry.class] or {}
-			table.insert(bucket[entry.class], entry)
+			local key = entry.class
+			if entry.isPet then
+				-- pets are listed under their OWNER's class
+				local ownerEntry = entry.owner and HO.Roster.byName[entry.owner]
+				key = (ownerEntry and ownerEntry.class) or entry.class
+			end
+			bucket[key] = bucket[key] or {}
+			table.insert(bucket[key], entry)
 		end
 	end
 	local function SortByName(a, b)
@@ -455,13 +461,17 @@ function Window.Refresh()
 						-- from that paladin's class assignment (dimmed)
 						local inheritedID
 						if not cur then
-							local classAssign = plan.class[pallys[c]] and plan.class[pallys[c]][entry.class]
-							if classAssign then
-								if entry.isPet then
-									if HO.Engine.PetIncluded(entry) then
+							if entry.isPet then
+								if HO.Engine.PetIncluded(entry) then
+									local ownerEntry = entry.owner and HO.Roster.byName[entry.owner]
+									local ownerClass = ownerEntry and ownerEntry.class
+									if ownerClass and plan.class[pallys[c]] and plan.class[pallys[c]][ownerClass] then
 										inheritedID = (HO.db.options.pets and HO.db.options.pets.blessing) or 2
 									end
-								elseif HO.Data.IsEligible(entry.class, classAssign.id, HO.Plan.IsTank(entry.name, entry.tankRole)) then
+								end
+							else
+								local classAssign = plan.class[pallys[c]] and plan.class[pallys[c]][entry.class]
+								if classAssign and HO.Data.IsEligible(entry.class, classAssign.id, HO.Plan.IsTank(entry.name, entry.tankRole)) then
 									inheritedID = classAssign.id
 								end
 							end

@@ -167,21 +167,11 @@ end
 
 -- main -------------------------------------------------------------------------
 
-function Planner.Run()
-	local pallys = HO.Roster.Paladins()
-	if #pallys == 0 then
-		return false, "no paladins in the roster"
-	end
+local function RunCore(pallys)
 	local plan = HO.Plan.Active()
 	local units = HO.Roster.units
 	local isRaid = IsInRaid()
 	local solo = (#pallys == 1)
-
-	-- bulk edit: individual SETs are suppressed; the caller broadcasts the
-	-- finished plan atomically (PLANAPPLY) instead
-	if HO.Comm then
-		HO.Comm.suspended = true
-	end
 
 	ClearAutoOverrides(plan)
 	wipe(plan.class)
@@ -324,15 +314,26 @@ function Planner.Run()
 		return receivedByClass[classToken] and receivedByClass[classToken][blessingID] or false
 	end
 
+	-- spread auto-overrides across paladins (round-robin) so no single row
+	-- grows past the addon-message size cap; deterministic via unit order
+	local rrCursor = 0
+	local function NextCaster(blessingID)
+		for step = 1, #pallys do
+			local idx = ((rrCursor + step - 1) % #pallys) + 1
+			if Available(pallys[idx], blessingID) then
+				rrCursor = idx
+				return pallys[idx]
+			end
+		end
+	end
+
 	-- 3) tanks: if no Kings reaches their class, give them Kings singles
 	for _, entry in ipairs(units) do
 		if not entry.isPet and entry.name and IsTankEntry(plan, entry) then
 			if not ClassReceives(entry.class, KINGS) and not HasOverrideFor(plan, entry.name) then
-				for _, pally in ipairs(pallys) do
-					if Available(pally, KINGS) then
-						AddAutoOverride(plan, pally, entry.name, KINGS)
-						break
-					end
+				local caster = NextCaster(KINGS)
+				if caster then
+					AddAutoOverride(plan, caster, entry.name, KINGS)
 				end
 			end
 		end
@@ -348,11 +349,9 @@ function Planner.Run()
 					receives = true -- the Salvation plan stays intact for non-tanks
 				end
 				if not receives and not HasOverrideFor(plan, entry.name) then
-					for _, pally in ipairs(pallys) do
-						if Available(pally, pref) then
-							AddAutoOverride(plan, pally, entry.name, pref)
-							break
-						end
+					local caster = NextCaster(pref)
+					if caster then
+						AddAutoOverride(plan, caster, entry.name, pref)
 					end
 				end
 			end
@@ -405,11 +404,36 @@ function Planner.Run()
 	end
 	local summary = table.concat(parts, "; ")
 	HO.Log("planner", string.format("run: raid=%s pallys=%d autoOverrides=%d | %s", tostring(isRaid), #pallys, overrideCount, summary))
+	return summary
+end
 
+function Planner.Run()
+	local pallys = HO.Roster.Paladins()
+	if #pallys == 0 then
+		return false, "no paladins in the roster"
+	end
+	-- bulk edit: individual SETs are suppressed while the plan is computed;
+	-- the suspension is error-safe (a stuck flag would silently kill ALL
+	-- outgoing sync), and the finished plan broadcasts atomically
+	if HO.Comm then
+		HO.Comm.suspended = true
+	end
+	local ok, summary = pcall(RunCore, pallys)
 	if HO.Comm then
 		HO.Comm.suspended = false
+	end
+	if not ok then
+		HO.Log("error", "planner: " .. tostring(summary))
+		return false, "internal error (logged)"
+	end
+	if HO.Comm then
 		if HO.Comm.SendPlanApply() then
 			HO.Print(HO.L["plan broadcast to the group"])
+		elseif IsInGroup() then
+			-- non-leads cannot broadcast the whole plan; their own row is
+			-- still authoritative and syncs
+			HO.Comm.BroadcastOwnRow()
+			HO.Print(HO.L["plan is local — only your own assignments sync (lead/assist can broadcast all)"])
 		end
 	end
 	return true, summary

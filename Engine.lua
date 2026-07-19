@@ -69,12 +69,15 @@ local function TargetBlessing(plan, me, entry)
 	end
 	if entry.isPet then
 		-- pets get the configured pet blessing, cast by whoever covers
-		-- the pet's base class
+		-- the OWNER's class (a hunter's pet is the hunter-coverer's duty;
+		-- the pet's own pseudo-class may have no player row at all)
 		if not PetIncluded(entry) then
 			return nil, false
 		end
+		local ownerEntry = entry.owner and HO.Roster.byName[entry.owner]
+		local ownerClass = ownerEntry and ownerEntry.class
 		local assigns = plan.class[me]
-		if assigns and entry.class and assigns[entry.class] then
+		if ownerClass and assigns and assigns[ownerClass] then
 			local petOpts = HO.db.options.pets
 			return (petOpts and petOpts.blessing) or 2, false
 		end
@@ -155,10 +158,16 @@ function Engine.Update()
 			end
 			local blessingID, isOverride = TargetBlessing(plan, me, entry)
 			if blessingID and blessingID > 0 then
-				-- overrides are explicit; class-wide targets pass eligibility
-				if isOverride or HO.Data.IsEligible(entry.class, blessingID, isTank) then
-					pools[entry.class] = pools[entry.class] or {}
-					table.insert(pools[entry.class], { entry = entry, blessingID = blessingID, isOverride = isOverride })
+				-- pets group under their OWNER's class button; player
+				-- eligibility rules do not apply to pets
+				local poolClass = entry.class
+				if entry.isPet then
+					local ownerEntry = entry.owner and HO.Roster.byName[entry.owner]
+					poolClass = (ownerEntry and ownerEntry.class) or entry.class
+				end
+				if isOverride or entry.isPet or HO.Data.IsEligible(entry.class, blessingID, isTank) then
+					pools[poolClass] = pools[poolClass] or {}
+					table.insert(pools[poolClass], { entry = entry, blessingID = blessingID, isOverride = isOverride })
 				end
 			end
 		end

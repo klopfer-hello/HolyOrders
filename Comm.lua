@@ -193,6 +193,15 @@ function Comm.SendFull(target)
 	Send("F:" .. SerializeRow(me), target and "WHISPER" or nil, target)
 end
 
+-- bump and broadcast only the player's own row (always permitted)
+function Comm.BroadcastOwnRow()
+	if not me then
+		return
+	end
+	BumpRev(me)
+	Comm.SendFull()
+end
+
 -- called by Plan.Set* after every local edit (unless suspended for a bulk op)
 function Comm.OnClassEdited(owner, classToken)
 	if Comm.suspended or not me then

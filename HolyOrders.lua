@@ -6,7 +6,7 @@ local ADDON_NAME = ...
 HolyOrders = HolyOrders or {}
 local HO = HolyOrders
 
-HO.VERSION = "0.13.0"
+HO.VERSION = "0.13.1"
 
 local DB_DEFAULTS = {
 	options = {},

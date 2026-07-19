@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-07-19
+
+### Fixed
+- The cast bar position was not restored correctly after a reload: the saved
+  offsets were re-applied against the wrong anchor point. The full anchor is
+  now saved. Re-drag the bar once; from then on the position sticks.
+
 ## [0.13.0] - 2026-07-19
 
 ### Added

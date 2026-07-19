@@ -36,7 +36,7 @@ local NONE_ICON = "Interface\\Buttons\\UI-GroupLoot-Pass-Up" -- "no aura" placeh
 -- YELLOW = a member requested a (different) buff that is not fulfilled yet.
 -- Precedence on the class button: red missing > yellow request > amber > green
 -- (a genuine missing buff is more urgent than a preference request).
-local REQUEST_R, REQUEST_G, REQUEST_B = 0.95, 0.85, 0.15 -- yellow: an unmet buff request
+local REQUEST_R, REQUEST_G, REQUEST_B = HO.Colors.rgb("yellow") -- unmet buff request (shared palette)
 
 local CLASS_ORDER = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
 
@@ -329,7 +329,7 @@ local function SetRowBorder(row, r, g, b)
 	if r then
 		row.iconFrame:SetVertexColor(r, g, b, 1)
 	else
-		row.iconFrame:SetVertexColor(0.5, 0.42, 0.22, 0.85) -- neutral gold frame, no status
+		row.iconFrame:SetVertexColor(HO.Colors.rgb("goldMuted", 0.85)) -- neutral gold frame, no status
 	end
 end
 
@@ -362,11 +362,11 @@ local function UpdateRowStatus(row, m)
 		row.icon:SetDesaturated(false)
 		row.icon:SetAlpha(0.35)
 	elseif m.hasBuff == true then
-		SetRowBorder(row, 0.10, 0.80, 0.10) -- green: has it
+		SetRowBorder(row, HO.Colors.rgb("green")) -- green: has it
 		row.icon:SetDesaturated(false)
 		row.icon:SetAlpha(1)
 	elseif m.hasBuff == false then
-		SetRowBorder(row, 0.85, 0.15, 0.15) -- red: assigned but missing
+		SetRowBorder(row, HO.Colors.rgb("red")) -- red: assigned but missing
 		row.icon:SetDesaturated(false)
 		row.icon:SetAlpha(1)
 	else
@@ -387,7 +387,7 @@ local function UpdateRowStatus(row, m)
 		else
 			row.reqBadge:SetVertexColor(1, 1, 1)
 			row.reqBadge:SetAlpha(1)
-			SetRowBorder(row, REQUEST_R, REQUEST_G, REQUEST_B) -- yellow: unmet request
+			SetRowBorder(row, HO.Colors.rgb("yellow")) -- yellow: unmet request
 		end
 		row.reqBadge:Show()
 	else
@@ -553,13 +553,15 @@ local function CreateFlyout()
 	flyout:SetClampedToScreen(true)
 	flyout:SetScript("OnEnter", CancelClose) -- cursor entered the fly-out: stay open
 	flyout:SetScript("OnLeave", ScheduleClose)
-	flyout.bg = flyout:CreateTexture(nil, "BACKGROUND")
-	flyout.bg:SetAllPoints()
-	flyout.bg:SetColorTexture(0.05, 0.05, 0.08, 0.94)
+	-- same dark rounded panel + thin gold border as the assignment window, with a
+	-- gold seam under the title (shared HO.Skin builder)
+	HO.Skin.Panel(flyout)
 	flyout.title = flyout:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-	flyout.title:SetPoint("TOPLEFT", FLYOUT_PAD, -4)
-	flyout.title:SetPoint("TOPRIGHT", -FLYOUT_PAD, -4)
+	flyout.title:SetPoint("TOPLEFT", FLYOUT_PAD + 2, -5)
+	flyout.title:SetPoint("TOPRIGHT", -(FLYOUT_PAD + 2), -5)
 	flyout.title:SetJustifyH("LEFT")
+	flyout.title:SetTextColor(HO.Colors.rgb("goldBright"))
+	flyout.seam = HO.Skin.Seam(flyout, -(FLYOUT_HEADER - 2))
 	-- the fly-out is parented to UIParent, so it does NOT inherit the bar's scale;
 	-- match it to the configured cast-bar scale here and in Bar.ApplyScale
 	flyout:SetScale(HO.db.options.bar and HO.db.options.bar.scale or 1)
@@ -602,11 +604,11 @@ function FlyoutRefresh()
 	local status = ""
 	if task and not task.noneAssigned then
 		if (task.missing or 0) > 0 then
-			status = "  |cffff6060" .. string.format(L["%d missing"], task.missing) .. "|r"
+			status = "  |cff" .. HO.Colors.hex("red") .. string.format(L["%d missing"], task.missing) .. "|r"
 		elseif (task.outOfRange or 0) > 0 then
-			status = "  |cffffcc55" .. string.format("%d %s", task.outOfRange, L["out of range"]) .. "|r"
+			status = "  |cff" .. HO.Colors.hex("yellow") .. string.format("%d %s", task.outOfRange, L["out of range"]) .. "|r"
 		else
-			status = "  |cff60ff60" .. L["all covered"] .. "|r"
+			status = "  |cff" .. HO.Colors.hex("green") .. L["all covered"] .. "|r"
 		end
 	end
 	flyout.title:SetText(flyoutClass .. status)

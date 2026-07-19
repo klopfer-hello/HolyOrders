@@ -35,6 +35,22 @@ local NONE_ICON = "Interface\\Buttons\\UI-GroupLoot-Pass-Up" -- explicit-none ma
 local WIN_BTN_MASK = "Interface\\AddOns\\HolyOrders\\Icons\\ButtonMask"
 local WIN_BTN_FRAME = "Interface\\AddOns\\HolyOrders\\Icons\\ButtonFrame"
 
+-- window skin: a dark rounded panel with a thin gold border. The border texture is
+-- 9-sliced (fixed corners, single-axis edge stretch, flat interior) so it never
+-- distorts at any window size — and, crucially, the skin only READS the window's
+-- corners; Window.Refresh's win:SetSize stays the sole authority on the size.
+local SKIN_BG = "Interface\\AddOns\\HolyOrders\\Icons\\WindowBg"
+local SKIN_BTN = "Interface\\AddOns\\HolyOrders\\Icons\\WindowButton"
+local SKIN_BTN_HI = "Interface\\AddOns\\HolyOrders\\Icons\\WindowButtonHi"
+local SKIN_BTN_PUSH = "Interface\\AddOns\\HolyOrders\\Icons\\WindowButtonPushed"
+local SKIN_CLOSE = "Interface\\AddOns\\HolyOrders\\Icons\\WindowClose"
+local SKIN_CLOSE_HI = "Interface\\AddOns\\HolyOrders\\Icons\\WindowCloseHi"
+local SKIN_GEM = "Interface\\AddOns\\HolyOrders\\Icons\\TitleGem"
+local SKIN_BRAND = "Interface\\AddOns\\HolyOrders\\Icons\\HolyOrders"
+local SKIN_CORNER = 16 -- corner piece drawn at this many pixels (never stretched)
+local SKIN_TCX = 24 / 1240 -- source corner width as a texcoord fraction (1240 px wide)
+local SKIN_TCY = 24 / 364 -- source corner height as a texcoord fraction (364 px tall)
+
 local win
 local expanded = {} -- [classToken] = true
 local classRows, memberRows = {}, {}
@@ -486,6 +502,73 @@ local function RestoreWindowPos()
 	end
 end
 
+-- build the 9-sliced gold border + dark interior as BACKGROUND textures on the
+-- window. Corners are a fixed SKIN_CORNER square (no stretch = no distortion);
+-- edges stretch on one axis; the flat interior stretches invisibly. Every piece
+-- anchors to the window's own corners, so it tracks the size Refresh sets without
+-- ever driving it.
+local function BuildWindowSkin(f)
+	local C, tx, ty = SKIN_CORNER, SKIN_TCX, SKIN_TCY
+	local function tex(l, r, t, b)
+		local tg = f:CreateTexture(nil, "BACKGROUND")
+		tg:SetTexture(SKIN_BG)
+		tg:SetTexCoord(l, r, t, b)
+		return tg
+	end
+	local tl = tex(0, tx, 0, ty)
+	tl:SetSize(C, C)
+	tl:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+	local tr = tex(1 - tx, 1, 0, ty)
+	tr:SetSize(C, C)
+	tr:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+	local bl = tex(0, tx, 1 - ty, 1)
+	bl:SetSize(C, C)
+	bl:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
+	local br = tex(1 - tx, 1, 1 - ty, 1)
+	br:SetSize(C, C)
+	br:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
+	local top = tex(tx, 1 - tx, 0, ty)
+	top:SetPoint("TOPLEFT", tl, "TOPRIGHT")
+	top:SetPoint("BOTTOMRIGHT", tr, "BOTTOMLEFT")
+	local bottom = tex(tx, 1 - tx, 1 - ty, 1)
+	bottom:SetPoint("TOPLEFT", bl, "TOPRIGHT")
+	bottom:SetPoint("BOTTOMRIGHT", br, "BOTTOMLEFT")
+	local left = tex(0, tx, ty, 1 - ty)
+	left:SetPoint("TOPLEFT", tl, "BOTTOMLEFT")
+	left:SetPoint("BOTTOMRIGHT", bl, "TOPRIGHT")
+	local right = tex(1 - tx, 1, ty, 1 - ty)
+	right:SetPoint("TOPLEFT", tr, "BOTTOMLEFT")
+	right:SetPoint("BOTTOMRIGHT", br, "TOPRIGHT")
+	local center = tex(tx, 1 - tx, ty, 1 - ty)
+	center:SetPoint("TOPLEFT", tl, "BOTTOMRIGHT")
+	center:SetPoint("BOTTOMRIGHT", br, "TOPLEFT")
+end
+
+-- template buttons carry their own SetTexCoord; reset it so our full-frame texture
+-- fills the button instead of showing a sliced region
+local function StripCoords(t)
+	if t then
+		t:SetTexCoord(0, 1, 0, 1)
+	end
+end
+
+-- reskin a UIPanelButtonTemplate button: dark rounded frame + gold label
+local function SkinButton(btn)
+	btn:SetNormalTexture(SKIN_BTN)
+	btn:SetPushedTexture(SKIN_BTN_PUSH)
+	btn:SetHighlightTexture(SKIN_BTN_HI)
+	StripCoords(btn:GetNormalTexture())
+	StripCoords(btn:GetPushedTexture())
+	StripCoords(btn:GetHighlightTexture())
+	if btn:GetHighlightTexture() then
+		btn:GetHighlightTexture():SetBlendMode("BLEND") -- our highlight is a full frame, not an additive glow
+	end
+	local fs = btn:GetFontString()
+	if fs then
+		fs:SetTextColor(HO.Colors.rgb("goldBright"))
+	end
+end
+
 function Window.Create()
 	if win then
 		return
@@ -511,9 +594,14 @@ function Window.Create()
 	win:Hide()
 	table.insert(UISpecialFrames, "HolyOrdersWindow")
 
-	win.bg = win:CreateTexture(nil, "BACKGROUND")
-	win.bg:SetAllPoints()
-	win.bg:SetColorTexture(0.05, 0.05, 0.08, 0.93)
+	BuildWindowSkin(win) -- dark rounded panel + thin gold border (decorative; tracks size)
+
+	-- addon crest tucked into the bottom-right corner (subtle, behind the hint text)
+	win.brand = win:CreateTexture(nil, "ARTWORK")
+	win.brand:SetSize(22, 22)
+	win.brand:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -10, 8)
+	win.brand:SetTexture(SKIN_BRAND)
+	win.brand:SetAlpha(0.55)
 
 	win.header = CreateFrame("Frame", nil, win)
 	win.header:SetPoint("TOPLEFT")
@@ -526,18 +614,27 @@ function Window.Create()
 		win:StopMovingOrSizing()
 		SaveWindowPos()
 	end)
-	win.header.bg = win.header:CreateTexture(nil, "BACKGROUND")
-	win.header.bg:SetAllPoints()
-	win.header.bg:SetColorTexture(0.94, 0.78, 0.09, 0.18)
+	-- blue title gem, then the title text, then a gold seam under the header row
+	win.header.gem = win.header:CreateTexture(nil, "ARTWORK")
+	win.header.gem:SetSize(18, 18)
+	win.header.gem:SetPoint("LEFT", 8, 0)
+	win.header.gem:SetTexture(SKIN_GEM)
 	win.header.title = win.header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	win.header.title:SetPoint("LEFT", 10, 0)
+	win.header.title:SetPoint("LEFT", win.header.gem, "RIGHT", 6, 0)
 	win.header.title:SetText(L["HolyOrders — Assignments"])
+	win.header.title:SetTextColor(HO.Colors.rgb("goldBright"))
+	win.seam = win:CreateTexture(nil, "ARTWORK")
+	win.seam:SetHeight(1)
+	win.seam:SetPoint("TOPLEFT", win, "TOPLEFT", SKIN_CORNER, -HEADER_H)
+	win.seam:SetPoint("TOPRIGHT", win, "TOPRIGHT", -SKIN_CORNER, -HEADER_H)
+	win.seam:SetColorTexture(HO.Colors.rgb("goldDeep", 0.8))
 
 	-- expand/collapse-all toggle: sits in the header row, just left of the
 	-- No Salv button (anchored below, once that button exists)
 	win.expandBtn = CreateFrame("Button", nil, win.header, "UIPanelButtonTemplate")
 	win.expandBtn:SetSize(24, 20)
 	win.expandBtn:SetText("+")
+	SkinButton(win.expandBtn)
 	win.expandBtn:SetScript("OnClick", ToggleExpandAll)
 	win.expandBtn:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -549,8 +646,18 @@ function Window.Create()
 	-- parent the close button to the window, not the header: the template's
 	-- default OnClick hides its PARENT, which used to hide only the title bar
 	local close = CreateFrame("Button", nil, win, "UIPanelCloseButton")
-	close:SetPoint("TOPRIGHT", win, "TOPRIGHT", 2, 2)
+	close:SetPoint("TOPRIGHT", win, "TOPRIGHT", -4, -4)
+	close:SetSize(22, 22)
 	close:SetFrameLevel(win.header:GetFrameLevel() + 1)
+	close:SetNormalTexture(SKIN_CLOSE)
+	close:SetPushedTexture(SKIN_CLOSE)
+	close:SetHighlightTexture(SKIN_CLOSE_HI)
+	StripCoords(close:GetNormalTexture())
+	StripCoords(close:GetPushedTexture())
+	StripCoords(close:GetHighlightTexture())
+	if close:GetHighlightTexture() then
+		close:GetHighlightTexture():SetBlendMode("BLEND")
+	end
 	close:SetScript("OnClick", function()
 		win:Hide()
 	end)
@@ -560,6 +667,7 @@ function Window.Create()
 		btn:SetSize(60, 20)
 		btn:SetPoint("RIGHT", win.header, "RIGHT", offsetX, 0)
 		btn:SetText(text)
+		SkinButton(btn)
 		btn:SetScript("OnClick", onClick)
 		btn:SetScript("OnEnter", function(self)
 			GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -591,6 +699,7 @@ function Window.Create()
 	win.colHeader = {}
 	win.hint = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	win.hint:SetPoint("BOTTOMLEFT", 10, 6)
+	win.hint:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -36, 6) -- leave the corner for the crest
 	win.hint:SetJustifyH("LEFT")
 
 	Window.ApplyScale() -- apply the saved window scale on first open

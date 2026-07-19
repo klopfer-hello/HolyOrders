@@ -22,6 +22,7 @@ local HEADER_MAX_CHARS = 5
 local MAX_WIN_H = 700 -- height clamp; taller rosters scroll via the mouse wheel
 local BOTTOM_PAD = 38 -- reserved space under the last row for the hint lines
 local FIRST_ROW_OFFSET = 20 -- gap between the column headers and the first row
+local ICON_SIZE = 20 -- cell icon size (~10% larger than the old ROW_H - 8 = 18)
 
 local CLASS_ORDER = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
 local MODE_TAG = { auto = "|cff9d9d9da|r", greater = "|cffffd100G|r", normal = "|cffffffffn|r" }
@@ -301,7 +302,7 @@ local function CreateCell(parent)
 	cell.bg:SetColorTexture(1, 1, 1, 0.06)
 	cell.icon = cell:CreateTexture(nil, "ARTWORK")
 	cell.icon:SetPoint("CENTER")
-	cell.icon:SetSize(ROW_H - 8, ROW_H - 8)
+	cell.icon:SetSize(ICON_SIZE, ICON_SIZE)
 	cell.icon:SetMask(WIN_BTN_MASK) -- rounded icon corners
 	-- static neutral rounded frame around the icon; the window is an editor, so
 	-- there is no green/red status colour on cells (mirrors the bar's neutral gold)
@@ -417,7 +418,7 @@ local function AuraRowCell(row, colIndex)
 		cell.bg:SetColorTexture(0.20, 0.20, 0.55, 0.20) -- blue tint marks the aura strip
 		cell.icon = cell:CreateTexture(nil, "ARTWORK")
 		cell.icon:SetPoint("CENTER")
-		cell.icon:SetSize(ROW_H - 8, ROW_H - 8)
+		cell.icon:SetSize(ICON_SIZE, ICON_SIZE)
 		cell.icon:SetMask(WIN_BTN_MASK) -- rounded icon corners
 		-- static neutral rounded frame around the icon (editor: no status colour)
 		cell.frame = cell:CreateTexture(nil, "OVERLAY", nil, 1)

@@ -642,6 +642,9 @@ local function CreateButton(index)
 	btn.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
 
 	btn.classIcon = btn:CreateTexture(nil, "OVERLAY")
+	-- draw above the status border (both are OVERLAY) so the corner class icon
+	-- is not clipped by the green/red/yellow edge
+	btn.classIcon:SetDrawLayer("OVERLAY", 2)
 	btn.classIcon:SetSize(15, 15)
 	btn.classIcon:SetPoint("TOPLEFT", -5, 5)
 	btn.classIcon:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")

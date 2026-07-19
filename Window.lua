@@ -314,7 +314,8 @@ local function CreateCell(parent)
 	cell.frame:SetTexture(WIN_BTN_FRAME)
 	cell.frame:SetVertexColor(0.5, 0.42, 0.22, 0.7)
 	cell.mode = cell:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	cell.mode:SetPoint("BOTTOMRIGHT", -1, 1)
+	-- nudged out toward the bottom-right corner so the big letter clears the icon
+	cell.mode:SetPoint("BOTTOMRIGHT", 4, -4)
 	cell.mode:SetDrawLayer("OVERLAY", 5) -- above the icon and frame
 	local mf, ms = cell.mode:GetFont()
 	cell.mode:SetFont(mf, (ms or 12) + 3, "THICKOUTLINE") -- larger, outlined for contrast

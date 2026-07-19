@@ -13,6 +13,7 @@ Talents.lua
 Roster.lua
 Plan.lua
 Planner.lua
+Comm.lua
 Engine.lua
 Bar.lua
 Window.lua

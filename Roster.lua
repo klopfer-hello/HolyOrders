@@ -56,8 +56,9 @@ function Roster.Rebuild()
 		for i = 1, MAX_RAID_MEMBERS do
 			local entry = AddEntry("raid" .. i)
 			if entry then
-				local _, _, subgroup, _, _, _, _, _, _, role = GetRaidRosterInfo(i)
+				local _, rank, subgroup, _, _, _, _, _, _, role = GetRaidRosterInfo(i)
 				entry.subgroup = subgroup or 1
+				entry.rank = rank or 0 -- 2 = leader, 1 = assist
 				entry.tankRole = (role == "MAINTANK")
 				pets["raidpet" .. i] = entry
 			end
@@ -65,6 +66,7 @@ function Roster.Rebuild()
 	else
 		local playerEntry = AddEntry("player")
 		if playerEntry then
+			playerEntry.rank = UnitIsGroupLeader("player") and 2 or 0
 			playerEntry.tankRole = GetPartyAssignment("MAINTANK", "player") and true or false
 			pets["pet"] = playerEntry
 		end
@@ -72,6 +74,7 @@ function Roster.Rebuild()
 			local unit = "party" .. i
 			local entry = AddEntry(unit)
 			if entry then
+				entry.rank = UnitIsGroupLeader(unit) and 2 or 0
 				entry.tankRole = GetPartyAssignment("MAINTANK", unit) and true or false
 				pets["partypet" .. i] = entry
 			end

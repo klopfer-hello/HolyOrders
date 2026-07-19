@@ -12,4 +12,5 @@ Talents.lua
 Roster.lua
 Plan.lua
 Planner.lua
+Engine.lua
 Commands.lua

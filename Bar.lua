@@ -863,7 +863,9 @@ function Bar.Create()
 	handle:SetSize(HANDLE_WIDTH, BUTTON_SIZE)
 	handle:EnableMouse(true)
 	handle:RegisterForDrag("LeftButton")
-	handle.tex = handle:CreateTexture(nil, "BACKGROUND")
+	-- ARTWORK (not BACKGROUND) so the golden grip is not the first thing occluded
+	-- when the bar is raised above other windows
+	handle.tex = handle:CreateTexture(nil, "ARTWORK")
 	handle.tex:SetAllPoints()
 	handle.tex:SetColorTexture(0.94, 0.78, 0.09, 0.55)
 	handle:SetScript("OnDragStart", function()
@@ -908,6 +910,9 @@ function Bar.Create()
 		buttons[i] = btn
 	end
 	auraButton = CreateAuraButton() -- always present; follows the bar's visibility
+	-- keep the golden handle as the topmost element of the bar (above the buttons)
+	-- so it stays visible and grabbable when the bar is raised over other windows
+	handle:SetFrameLevel((bar:GetFrameLevel() or 1) + 10)
 	LayoutBar()
 	RestorePosition()
 	Bar.ApplyScale() -- apply the saved cast-bar scale (out of combat at login)

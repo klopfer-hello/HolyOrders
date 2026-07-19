@@ -398,10 +398,10 @@ local function OnRosterChanged()
 			Plan.suggestion = sig
 			HO.Log("plan", "stored plan for " .. sig .. " offered (auto-apply suppressed)")
 			if dirty then
-				HO.Print(L("stored plan for this roster available — '/ho plan apply' loads it (your unsaved edits are kept until then)")
+				HO.Announce(L("stored plan for this roster available — '/ho plan apply' loads it (your unsaved edits are kept until then)")
 					.. (noSalv and " (no-Salvation mode active)" or ""))
 			else
-				HO.Print("stored plan for this roster available — '/ho plan apply' loads it (no-Salvation mode active)")
+				HO.Announce("stored plan for this roster available — '/ho plan apply' loads it (no-Salvation mode active)")
 			end
 			return
 		end
@@ -445,7 +445,7 @@ local function OnRosterChanged()
 	Plan.suggestion = bestSig
 	if bestSig then
 		local named = HO.db.plans[bestSig].meta.name
-		HO.Print(string.format(
+		HO.Announce(string.format(
 			"similar stored plan found (%d%% paladin overlap)%s — '/ho plan apply' to use it",
 			math.floor(bestScore * 100 + 0.5),
 			named and (" '" .. named .. "'") or ""

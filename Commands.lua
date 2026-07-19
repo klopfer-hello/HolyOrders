@@ -473,7 +473,7 @@ HO.commands["auto"] = function()
 	local ok, msg = HO.Planner.Run()
 	if ok then
 		HO.Print("auto-plan: " .. msg)
-		HO.Print("'/ho plan show' for details, '/ho plan save [label]' to keep it")
+		HO.Announce("'/ho plan show' for details, '/ho plan save [label]' to keep it")
 	else
 		HO.Print("auto-plan failed: " .. msg)
 	end

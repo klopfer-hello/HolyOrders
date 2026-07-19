@@ -519,7 +519,7 @@ function Planner.Run()
 	end
 	if HO.Comm then
 		if HO.Comm.SendPlanApply() then
-			HO.Print(HO.L["plan broadcast to the group"])
+			HO.Announce(HO.L["plan broadcast to the group"])
 		elseif IsInGroup() then
 			-- non-leads cannot broadcast the whole plan; their own row is
 			-- still authoritative and syncs

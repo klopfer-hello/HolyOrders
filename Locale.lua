@@ -75,6 +75,7 @@ L["has the blessing"] = "hat den Segen"
 L["missing the blessing"] = "Segen fehlt"
 L["out of range"] = "außer Reichweite"
 L["wheel: change blessing — right-click: clear"] = "Mausrad: Segen wechseln — Rechtsklick: leeren"
+L["left-click: cast — wheel: change — right-click: clear"] = "Linksklick: wirken — Mausrad: wechseln — Rechtsklick: leeren"
 L["assignment changes apply after combat"] = "Zuteilungsänderungen werden nach dem Kampf übernommen"
 
 -- paladin aura

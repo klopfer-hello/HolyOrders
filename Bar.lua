@@ -162,10 +162,42 @@ end
 -- red = assigned but missing, neutral = no assignment or out of range (status
 -- unknowable). Wheeling a row re-assigns that member's blessing and right-click
 -- clears it, exactly like the assignment window's member cell (same Plan calls,
--- so it stays synced). It never casts, so it may be shown/hidden freely.
+-- so it stays synced). Left-clicking a row casts that member's single blessing
+-- (secure), so the rows are secure buttons configured only out of combat; the
+-- whole fly-out is an OUT-OF-COMBAT tool and closes when combat starts.
 local flyout
 local flyoutRows = {}
 local flyoutClass -- classToken currently displayed, nil when closed
+local flyoutAnchor -- the class button the fly-out is currently anchored to
+
+-- forward declarations so the hover-close timer and the class-button hover
+-- handlers below can reference these before their definitions
+local FlyoutHide, FlyoutRefresh, FlyoutShow
+
+-- hover-close: the fly-out opens on mouseover of a class button and closes a
+-- short moment after the cursor leaves BOTH the button and the fly-out, so you
+-- can slide from the button into the fly-out without it vanishing
+local flyoutCloseTimer
+local function CancelClose()
+	if flyoutCloseTimer then
+		flyoutCloseTimer:Cancel()
+		flyoutCloseTimer = nil
+	end
+end
+local function MaybeClose()
+	flyoutCloseTimer = nil
+	if not flyout or not flyout:IsShown() then
+		return
+	end
+	if flyout:IsMouseOver() or (flyoutAnchor and flyoutAnchor:IsMouseOver()) then
+		return -- cursor is still over the fly-out or its class button
+	end
+	FlyoutHide()
+end
+local function ScheduleClose()
+	CancelClose()
+	flyoutCloseTimer = C_Timer.NewTimer(0.3, MaybeClose)
+end
 local FLYOUT_ROW_H = 30
 local FLYOUT_HEADER = 20
 local FLYOUT_FOOTER = 5 -- bottom padding only (no hint line)
@@ -196,6 +228,64 @@ local function SetRowBorder(row, r, g, b)
 		else
 			tex:Hide()
 		end
+	end
+end
+
+-- paint a row's member data, icon and green/red status border. All non-secure
+-- (textures/fontstrings), so it is safe any time; also stores the fields the row
+-- tooltip and right-click/wheel handlers read.
+local function UpdateRowStatus(row, m)
+	row.memberName = m.name
+	row.isPet = m.isPet
+	row.blessingID = m.blessingID
+	row.hasBuff = m.hasBuff
+	row.inRange = m.inRange
+	local blessing = m.blessingID and HO.Data.blessings[m.blessingID]
+	row.icon:SetTexture((blessing and blessing.icon) or NONE_ICON)
+	local short = m.name:match("^([^%-]+)") or m.name
+	if m.isPet then
+		local ownerShort = m.owner and (m.owner:match("^([^%-]+)") or m.owner) or "?"
+		row.name:SetText(short .. " |cff9d9d9d" .. string.format(L["(pet of %s)"], ownerShort) .. "|r")
+	else
+		row.name:SetText(short)
+	end
+	-- out-of-range is unknowable, so neutral/dim rather than a false red
+	if not m.blessingID then
+		SetRowBorder(row) -- no assignment → neutral
+		row.icon:SetDesaturated(true)
+		row.icon:SetAlpha(0.8)
+	elseif m.inRange == false then
+		SetRowBorder(row) -- can't know the buff at range → neutral, dimmed
+		row.icon:SetDesaturated(false)
+		row.icon:SetAlpha(0.35)
+	elseif m.hasBuff == true then
+		SetRowBorder(row, 0.10, 0.80, 0.10) -- green: has it
+		row.icon:SetDesaturated(false)
+		row.icon:SetAlpha(1)
+	elseif m.hasBuff == false then
+		SetRowBorder(row, 0.85, 0.15, 0.15) -- red: assigned but missing
+		row.icon:SetDesaturated(false)
+		row.icon:SetAlpha(1)
+	else
+		SetRowBorder(row) -- status unknown → neutral
+		row.icon:SetDesaturated(false)
+		row.icon:SetAlpha(1)
+	end
+end
+
+-- clicking a row casts the member's assigned SINGLE blessing on them. Secure
+-- attributes may only change out of combat; the caller guarantees that.
+local function ConfigureRowSecure(row, m)
+	local blessing = m.blessingID and HO.Data.blessings[m.blessingID]
+	if blessing and blessing.name and m.unit then
+		row:SetAttribute("type1", "spell")
+		row:SetAttribute("spell1", blessing.name) -- the 10-min single
+		row:SetAttribute("unit1", m.unit)
+	else
+		-- no assignment (or no unit): nothing to cast
+		row:SetAttribute("type1", nil)
+		row:SetAttribute("spell1", nil)
+		row:SetAttribute("unit1", nil)
 	end
 end
 
@@ -247,9 +337,11 @@ local function AcquireFlyoutRow(index)
 	if row then
 		return row
 	end
-	row = CreateFrame("Button", nil, flyout)
+	-- secure so a left-click can cast the member's blessing; attributes are only
+	-- ever set out of combat (the fly-out is an out-of-combat tool)
+	row = CreateFrame("Button", nil, flyout, "SecureActionButtonTemplate")
 	row:SetSize(FLYOUT_WIDTH - 2 * FLYOUT_PAD, FLYOUT_ROW_H)
-	row:RegisterForClicks("RightButtonUp")
+	row:RegisterForClicks("AnyDown", "AnyUp")
 	row:EnableMouseWheel(true)
 	row.bg = row:CreateTexture(nil, "BACKGROUND")
 	row.bg:SetAllPoints()
@@ -300,17 +392,20 @@ local function AcquireFlyoutRow(index)
 		local newID = CycleMemberOverride(me, cur, delta > 0 and 1 or -1)
 		ApplyMemberOverride(self.memberName, self.isPet, newID)
 	end)
-	row:SetScript("OnClick", function(self, mouseBtn)
-		if mouseBtn ~= "RightButton" or not self.memberName then
-			return
+	-- left-click casts the secure blessing; right-click clears the assignment.
+	-- PostClick runs after the (suppressed for right) secure action, so editing
+	-- here never taints. Guard to fire the clear once, on the down edge.
+	row:SetScript("PostClick", function(self, mouseBtn, down)
+		if mouseBtn == "RightButton" and down and self.memberName then
+			if InCombatLockdown() then
+				HO.Print(L["assignment changes apply after combat"])
+				return
+			end
+			ApplyMemberOverride(self.memberName, self.isPet, 0) -- clear the override (and liking)
 		end
-		if InCombatLockdown() then
-			HO.Print(L["assignment changes apply after combat"])
-			return
-		end
-		ApplyMemberOverride(self.memberName, self.isPet, 0) -- clear the override (and liking)
 	end)
 	row:SetScript("OnEnter", function(self)
+		CancelClose() -- keep the fly-out open while the cursor is over a row
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 		GameTooltip:SetText(self.memberName or "?")
 		if self.blessingID then
@@ -325,11 +420,12 @@ local function AcquireFlyoutRow(index)
 		else
 			GameTooltip:AddLine(L["no buff assigned"], 0.8, 0.8, 0.8)
 		end
-		GameTooltip:AddLine(L["wheel: change blessing — right-click: clear"], 0.8, 0.8, 0.8)
+		GameTooltip:AddLine(L["left-click: cast — wheel: change — right-click: clear"], 0.8, 0.8, 0.8)
 		GameTooltip:Show()
 	end)
 	row:SetScript("OnLeave", function()
 		GameTooltip:Hide()
+		ScheduleClose()
 	end)
 	flyoutRows[index] = row
 	return row
@@ -346,6 +442,8 @@ local function CreateFlyout()
 	flyout:SetHeight(FLYOUT_HEADER + FLYOUT_ROW_H + FLYOUT_FOOTER)
 	flyout:EnableMouse(true) -- swallow clicks so they don't fall through to the world
 	flyout:SetClampedToScreen(true)
+	flyout:SetScript("OnEnter", CancelClose) -- cursor entered the fly-out: stay open
+	flyout:SetScript("OnLeave", ScheduleClose)
 	flyout.bg = flyout:CreateTexture(nil, "BACKGROUND")
 	flyout.bg:SetAllPoints()
 	flyout.bg:SetColorTexture(0.05, 0.05, 0.08, 0.94)
@@ -356,18 +454,23 @@ local function CreateFlyout()
 	flyout:Hide()
 end
 
-local function FlyoutHide()
+function FlyoutHide()
 	flyoutClass = nil
+	flyoutAnchor = nil
+	CancelClose()
 	if flyout then
 		flyout:Hide()
 	end
 end
 
--- rebuild the fly-out's rows from the engine's live per-member status; called on
--- every bar refresh while it is open so the green/red borders update in place
-local function FlyoutRefresh()
+-- rebuild the fly-out from the engine's per-member status. The rows are secure,
+-- so this may only run out of combat; the whole fly-out is closed in combat.
+function FlyoutRefresh()
 	if not flyoutClass or not flyout or not flyout:IsShown() then
 		return
+	end
+	if InCombatLockdown() then
+		return -- out-of-combat tool: never touch secure rows in combat
 	end
 	-- re-find the button that currently represents this class; if the class left
 	-- the bar (or the bar hid), close the fly-out
@@ -376,6 +479,7 @@ local function FlyoutRefresh()
 		FlyoutHide()
 		return
 	end
+	flyoutAnchor = anchor
 	flyout:ClearAllPoints()
 	-- fly out to the LEFT of the class button (top-aligned), like the classic
 	-- paladin buff addons; SetClampedToScreen keeps it on-screen near an edge
@@ -383,46 +487,11 @@ local function FlyoutRefresh()
 	flyout.title:SetText(flyoutClass)
 
 	local members = HO.Engine.ClassMembers(flyoutClass)
-	local count = 0
+	local count = #members
 	for i, m in ipairs(members) do
-		count = i
 		local row = AcquireFlyoutRow(i)
-		row.memberName = m.name
-		row.isPet = m.isPet
-		row.blessingID = m.blessingID
-		row.hasBuff = m.hasBuff
-		row.inRange = m.inRange
-		local blessing = m.blessingID and HO.Data.blessings[m.blessingID]
-		row.icon:SetTexture((blessing and blessing.icon) or NONE_ICON)
-		local short = m.name:match("^([^%-]+)") or m.name
-		if m.isPet then
-			local ownerShort = m.owner and (m.owner:match("^([^%-]+)") or m.owner) or "?"
-			row.name:SetText(short .. " |cff9d9d9d" .. string.format(L["(pet of %s)"], ownerShort) .. "|r")
-		else
-			row.name:SetText(short)
-		end
-		-- status border: out-of-range is unknowable, so neutral/dim rather than red
-		if not m.blessingID then
-			SetRowBorder(row) -- no assignment → neutral
-			row.icon:SetDesaturated(true)
-			row.icon:SetAlpha(0.8)
-		elseif m.inRange == false then
-			SetRowBorder(row) -- can't know the buff at range → neutral, dimmed
-			row.icon:SetDesaturated(false)
-			row.icon:SetAlpha(0.35)
-		elseif m.hasBuff == true then
-			SetRowBorder(row, 0.10, 0.80, 0.10) -- green: has it
-			row.icon:SetDesaturated(false)
-			row.icon:SetAlpha(1)
-		elseif m.hasBuff == false then
-			SetRowBorder(row, 0.85, 0.15, 0.15) -- red: assigned but missing
-			row.icon:SetDesaturated(false)
-			row.icon:SetAlpha(1)
-		else
-			SetRowBorder(row) -- status unknown → neutral
-			row.icon:SetDesaturated(false)
-			row.icon:SetAlpha(1)
-		end
+		UpdateRowStatus(row, m)     -- non-secure visuals
+		ConfigureRowSecure(row, m)  -- secure cast attributes (out of combat only)
 		row:ClearAllPoints()
 		row:SetPoint("TOPLEFT", flyout, "TOPLEFT", FLYOUT_PAD, -(FLYOUT_HEADER + (i - 1) * FLYOUT_ROW_H))
 		row:Show()
@@ -439,25 +508,17 @@ local function FlyoutRefresh()
 	flyout:SetToplevel(true)
 end
 
-local function FlyoutOpen(classToken)
-	if not classToken then
+-- open (or re-target) the fly-out for a class on hover. Out of combat only: the
+-- secure rows cannot be reconfigured in combat, so the fly-out stays closed then.
+function FlyoutShow(classToken)
+	if InCombatLockdown() or not classToken then
 		return
 	end
+	CancelClose()
 	CreateFlyout()
 	flyoutClass = classToken
 	flyout:Show()
 	FlyoutRefresh()
-end
-
-local function FlyoutToggle(classToken)
-	if not classToken then
-		return
-	end
-	if flyoutClass == classToken and flyout and flyout:IsShown() then
-		FlyoutHide()
-	else
-		FlyoutOpen(classToken)
-	end
 end
 
 local function CreateButton(index)
@@ -469,16 +530,6 @@ local function CreateButton(index)
 	-- left: the planned cast (greater when planned); right: always a single
 	btn:SetAttribute("type1", "spell")
 	btn:SetAttribute("type2", "spell")
-	-- shift-left opens the per-class fly-out instead of casting: an empty
-	-- shift-type1 (looked up before type1 when Shift is held) suppresses the
-	-- cast, and PreClick opens the NON-secure fly-out. Set once here, out of
-	-- combat; it is static and never touched again, so it never taints the bar.
-	btn:SetAttribute("shift-type1", "")
-	btn:SetScript("PreClick", function(self, mouseBtn, down)
-		if down and mouseBtn == "LeftButton" and IsShiftKeyDown() and self.task then
-			FlyoutToggle(self.task.classToken)
-		end
-	end)
 	-- wheel: cycle my class assignment (out of combat; syncs + updates window)
 	btn:EnableMouseWheel(true)
 	btn:SetScript("OnMouseWheel", function(self, delta)
@@ -523,6 +574,10 @@ local function CreateButton(index)
 		if not task then
 			return
 		end
+		-- hover opens the per-class fly-out (out of combat); keep it open while
+		-- the cursor is on the button
+		CancelClose()
+		FlyoutShow(task.classToken)
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
 		local blessing = HO.Data.blessings[task.blessingID]
 		GameTooltip:SetText(task.classToken)
@@ -555,6 +610,7 @@ local function CreateButton(index)
 	end)
 	btn:SetScript("OnLeave", function()
 		GameTooltip:Hide()
+		ScheduleClose() -- close the fly-out shortly unless the cursor reaches it
 	end)
 	return btn
 end
@@ -763,7 +819,8 @@ function Bar.Refresh()
 			end
 		end
 		RefreshAuraButton() -- icon only in combat; never touches attributes
-		FlyoutRefresh() -- live green/red status is safe (and useful) in combat
+		-- the fly-out is closed on combat start (PLAYER_REGEN_DISABLED) and its
+		-- secure rows can't be touched in combat, so nothing to refresh here
 		return
 	end
 
@@ -876,4 +933,7 @@ HO.RegisterEvent("PLAYER_REGEN_ENABLED", function()
 	end
 	Bar.ApplyStrata() -- apply any strata change made during combat
 	Bar.Refresh()
+end)
+HO.RegisterEvent("PLAYER_REGEN_DISABLED", function()
+	FlyoutHide() -- the fly-out is an out-of-combat tool; close it when combat starts
 end)

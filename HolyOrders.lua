@@ -49,6 +49,11 @@ HO.RegisterEvent("ADDON_LOADED", function(name)
 		end
 	end
 	HO.db = HolyOrdersDB
+	-- others may adjust your assignments by default (opt out in the options).
+	-- nil = never chosen → default on; an explicit false the user set is kept.
+	if HO.db.options.openEdit == nil then
+		HO.db.options.openEdit = true
+	end
 end)
 
 HO.RegisterEvent("PLAYER_LOGIN", function()
@@ -84,6 +89,15 @@ end
 
 function HO.Print(msg)
 	DEFAULT_CHAT_FRAME:AddMessage("|cfff0c817HolyOrders|r: " .. tostring(msg))
+end
+
+-- ambient status output (routine sync / auto-plan events). Silent unless the
+-- user opts into verbose chat in the options; direct command responses, errors
+-- and important warnings always use HO.Print.
+function HO.Announce(msg)
+	if HO.db and HO.db.options and HO.db.options.verbose then
+		HO.Print(msg)
+	end
 end
 
 function HO.PrintLine(msg)

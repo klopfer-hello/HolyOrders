@@ -56,6 +56,7 @@ ITEMS = {
 	{ label = L["Buff hunter pets"], get = function(o) return o.pets.hunter ~= false end, set = function(o, v) o.pets.hunter = v; RefreshAll() end },
 	{ label = L["Buff warlock pets"], get = function(o) return o.pets.warlock == true end, set = function(o, v) o.pets.warlock = v; RefreshAll() end },
 	{ label = L["Show minimap button"], get = function(o) return not o.minimap.hide end, set = function(o, v) o.minimap.hide = not v; HO.MinimapButton.UpdateShown() end },
+	{ label = L["Show status messages in chat"], get = function(o) return o.verbose == true end, set = function(o, v) o.verbose = v end },
 	{ label = L["Log sync messages (debug)"], get = function(o) return o.trace end, set = function(o, v) o.trace = v end },
 }
 

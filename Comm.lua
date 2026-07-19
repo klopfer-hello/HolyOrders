@@ -792,7 +792,7 @@ handlers["PE"] = function(sender)
 	-- the snapshot supersedes any pre-snapshot tank click still waiting to send
 	CancelQueued("T")
 	HO.Log("comm", "plan apply from " .. sender .. ": " .. applied .. "/" .. #rows .. " rows")
-	HO.Print("blessing plan received from " .. sender)
+	HO.Announce("blessing plan received from " .. sender)
 	RefreshUI()
 end
 
@@ -832,7 +832,7 @@ handlers["LR"] = function(sender)
 			Send("LL:" .. myIdx .. ";" .. total .. ";" .. tostring(entry):sub(1, 180), "WHISPER", sender)
 		end)
 	end
-	HO.Print("sent " .. total .. " log entries to " .. sender)
+	HO.Announce("sent " .. total .. " log entries to " .. sender)
 end
 
 handlers["LL"] = function(sender, payload)
@@ -874,7 +874,7 @@ handlers["NS"] = function(sender, payload)
 	end
 	if payload == "1" then
 		HO.db.noSalvBy = sender
-		HO.Print("no-Salvation mode enabled by " .. sender)
+		HO.Announce("no-Salvation mode enabled by " .. sender)
 	else
 		HO.db.noSalvBy = nil
 		if HO.Plan.NoSalvationActive() then
@@ -885,9 +885,9 @@ handlers["NS"] = function(sender, payload)
 			HO.Plan.SetNoSalvation(false)
 			Comm.SendPlanApply(true)
 			Comm.SendNoSalv(false)
-			HO.Print("no-Salvation mode reverted (requested by " .. sender .. ")")
+			HO.Announce("no-Salvation mode reverted (requested by " .. sender .. ")")
 		else
-			HO.Print("no-Salvation mode ended by " .. sender)
+			HO.Announce("no-Salvation mode ended by " .. sender)
 		end
 	end
 	RefreshUI()

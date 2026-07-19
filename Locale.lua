@@ -23,6 +23,7 @@ L["Prefer greater blessings even for single members"] = "Große Segen auch bei e
 L["Buff hunter pets"] = "Jäger-Begleiter segnen"
 L["Buff warlock pets"] = "Hexenmeister-Begleiter segnen"
 L["Show minimap button"] = "Minimap-Button anzeigen"
+L["Show status messages in chat"] = "Statusmeldungen im Chat anzeigen"
 L["Log sync messages (debug)"] = "Sync-Nachrichten protokollieren (Debug)"
 L["Keep cast bar above other windows"] = "Leiste über anderen Fenstern halten"
 L["Pet blessing: %s"] = "Begleiter-Segen: %s"
@@ -30,6 +31,7 @@ L["Bar grows: %s"] = "Leiste wächst: %s"
 
 -- assignment window
 L["HolyOrders — Assignments"] = "HolyOrders — Zuteilungen"
+L["expand or collapse all classes"] = "alle Klassen auf- oder zuklappen"
 L["Save"] = "Speichern"
 L["Run the deterministic auto-planner"] = "Deterministischen Auto-Planer ausführen"
 L["Force rebuff: refresh everything before the pull"] = "Zwangs-Rebuff: vor dem Pull alles auffrischen"

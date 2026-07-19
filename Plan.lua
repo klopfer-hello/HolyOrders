@@ -415,7 +415,7 @@ local function OnRosterChanged()
 		stored.meta.lastUsed = time()
 		Plan.suggestion = nil
 		HO.Log("plan", "auto-applied stored plan for " .. sig)
-		HO.Print(L("stored plan applied for this paladin roster") .. (stored.meta.name and (" ('" .. stored.meta.name .. "')") or ""))
+		HO.Announce(L("stored plan applied for this paladin roster") .. (stored.meta.name and (" ('" .. stored.meta.name .. "')") or ""))
 		-- the automatic broadcast fires on every privileged client at once;
 		-- gate it to the actual group leader. Other privileged clients apply
 		-- locally and only re-sync their own row.
@@ -424,7 +424,7 @@ local function OnRosterChanged()
 				if HO.Comm.SendPlanApply() then
 					-- PLANAPPLY carries no auras; the lead teaches them here
 					HO.Comm.BroadcastAuras()
-					HO.Print(L("plan broadcast to the group"))
+					HO.Announce(L("plan broadcast to the group"))
 				end
 			else
 				HO.Comm.BroadcastOwnRow()

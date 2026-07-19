@@ -292,6 +292,26 @@ HO.commands["ping"] = function()
 	HO.Comm.Ping()
 end
 
+HO.commands["trace"] = function()
+	HO.db.options.trace = not HO.db.options.trace
+	HO.Print("comm trace " .. (HO.db.options.trace and "ON — every sync message is logged (both directions)" or "off"))
+end
+
+HO.commands["getlog"] = function(rest)
+	local target = rest:match("^(%S+)$")
+	if not target then
+		HO.Print("usage: /ho getlog <playerName> — pulls their recent HolyOrders log into your SavedVariables")
+		return
+	end
+	local full = HO.Roster.Resolve(target)
+	if not full then
+		HO.Print("target is not in the roster")
+		return
+	end
+	HO.Comm.RequestLog(full)
+	HO.Print("log requested from " .. full)
+end
+
 -- encounter toggle: swap Salvation out, revert afterwards
 HO.commands["nosalv"] = function()
 	local myself = HO.FullName("player")

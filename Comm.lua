@@ -34,6 +34,9 @@ local function Send(msg, channel, target)
 	if not channel then
 		return
 	end
+	if HO.db and HO.db.options.trace then
+		HO.Log("tx", channel .. (target and ("/" .. target) or "") .. " " .. msg:sub(1, 120))
+	end
 	C_ChatInfo.SendAddonMessage(PREFIX, PROTO .. ":" .. msg, channel, target)
 end
 
@@ -384,6 +387,55 @@ handlers["PING"] = function(sender)
 	HO.Print("comm loopback OK (from " .. sender .. ")")
 end
 
+-- remote log pull: a group member requests our recent log; we whisper it
+-- back in chunks so it ends up in THEIR SavedVariables for offline analysis
+local LOG_SHARE_MAX = 25
+
+handlers["LR"] = function(sender)
+	if not HO.Roster.byName[sender] then
+		return -- group members only
+	end
+	local log = HO.db.log
+	local from = math.max(1, #log - LOG_SHARE_MAX + 1)
+	local total = #log - from + 1
+	if total <= 0 then
+		Send("LL:1;1;<empty log>", "WHISPER", sender)
+		return
+	end
+	local idx = 0
+	for i = from, #log do
+		idx = idx + 1
+		local entry, myIdx = log[i], idx
+		C_Timer.After(myIdx * 0.1, function()
+			Send("LL:" .. myIdx .. ";" .. total .. ";" .. tostring(entry):sub(1, 180), "WHISPER", sender)
+		end)
+	end
+	HO.Print("sent " .. total .. " log entries to " .. sender)
+end
+
+handlers["LL"] = function(sender, payload)
+	local idx, total, entry = payload:match("^(%d+);(%d+);(.*)$")
+	idx, total = tonumber(idx), tonumber(total)
+	if not idx then
+		return
+	end
+	HO.db.remoteLogs = HO.db.remoteLogs or {}
+	if idx <= 1 then
+		HO.db.remoteLogs[sender] = {}
+	end
+	local list = HO.db.remoteLogs[sender]
+	if list then
+		table.insert(list, entry)
+		if idx == total then
+			HO.Print("received " .. #list .. " log entries from " .. sender .. " — /reload writes them to SavedVariables")
+		end
+	end
+end
+
+function Comm.RequestLog(target)
+	Send("LR:", "WHISPER", target)
+end
+
 HO.RegisterEvent("CHAT_MSG_ADDON", function(prefix, message, _, senderFull)
 	if prefix ~= PREFIX then
 		return
@@ -395,6 +447,9 @@ HO.RegisterEvent("CHAT_MSG_ADDON", function(prefix, message, _, senderFull)
 	end
 	if sender == me and msgType ~= "PING" then
 		return -- own broadcasts echo back; PING is the deliberate loopback
+	end
+	if HO.db and HO.db.options.trace and msgType ~= "LL" then
+		HO.Log("rx", sender .. " " .. msgType .. ":" .. tostring(payload):sub(1, 100))
 	end
 	local handler = handlers[msgType]
 	if handler then

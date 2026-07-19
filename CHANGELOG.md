@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-07-20
+
+Sync protocol stays v4 — this release is compatible with 0.17.x–0.19.x. The new
+sync messages (auras, buff requests, spec tags) are additive and older clients
+simply ignore them.
+
+### Added
+- Paladin aura assignment: each paladin's aura is assignable and mouse-wheel
+  adjustable (your own column offers the auras you actually know), shown as a
+  strip in the assignment window and as a button on the cast bar, and synced to
+  the group. The aura button greys out when the correct aura is already active.
+- Per-class fly-out on the cast bar: hover a class button to see every member of
+  that class with their assigned blessing and a live status border — green has
+  it, red assigned-but-missing, yellow requested, neutral when out of range.
+  Left-click a row casts that member's single blessing, mouse-wheel re-assigns
+  it, right-click clears — all synced exactly like the assignment window. It is
+  an out-of-combat tool and closes when combat starts.
+- Buff requests for non-paladins: request a blessing for yourself and the
+  paladins see it as a yellow-framed badge on the cast bar, in the fly-out and
+  in the assignment window.
+- Expand/collapse-all-classes toggle in the assignment window header.
+- Scale options for the cast bar and for the windows (Interface Options).
+- The assignment window remembers its on-screen position across sessions.
+
+### Changed
+- Visual redesign of the cast bar: the handle is now a gem node that doubles as
+  an overall status light (green all covered, yellow expiring, red missing, and
+  red while a force-rebuff is running); cast buttons are rounded with the timer
+  overlaid larger on the icon. Ctrl-drag moves the handle and the separate
+  lock/unlock toggle is gone.
+- The assignment window and the class fly-out share a new lean look: a dark
+  rounded panel with a thin gold border, a blue title gem, a gold close button,
+  gold-labelled buttons, a gold seam under the title, and the crest in the
+  corner. Every colour comes from one shared palette.
+- Clearer cast-mode tags in the assignment window: A (auto), G (greater),
+  S (single) — larger and colour-coded so they read on any blessing icon.
+- Larger blessing icons in the assignment window (rows grow to fit).
+- Quieter chat by default: routine status messages are off unless you enable
+  them; open-edit is on by default.
+- Windows now sit at the standard panel strata, so higher-priority windows
+  (calendar and the like) draw cleanly over them instead of bleeding through.
+
+### Fixed
+- The golden handle stays on top when the bar is set to keep above other windows.
+- Saturated handle status colours so red reads as red, not orange.
+- Fly-out edits now show up in the assignment window (the affected class row
+  expands so the per-member override is visible).
+- The class icon draws above the status border on the cast bar.
+
 ## [0.19.0] - 2026-07-19
 
 Sync protocol stays v4 — this release is compatible with 0.17.x/0.18.x; the

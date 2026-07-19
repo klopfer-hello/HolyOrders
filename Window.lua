@@ -13,8 +13,8 @@ local NAME_W = 175
 local COL_W = 34
 local COL_GAP = 4
 local HEADER_H = 30
-local ROW_H = 26
-local MEMBER_ROW_H = 22
+local ROW_H = 30
+local MEMBER_ROW_H = 28
 local PAD = 8
 local MAX_COLS = 8
 local LABEL_INDENT = 14 -- member-row label indent (rows themselves stay aligned)
@@ -22,7 +22,7 @@ local HEADER_MAX_CHARS = 5
 local MAX_WIN_H = 700 -- height clamp; taller rosters scroll via the mouse wheel
 local BOTTOM_PAD = 38 -- reserved space under the last row for the hint lines
 local FIRST_ROW_OFFSET = 20 -- gap between the column headers and the first row
-local ICON_SIZE = 20 -- cell icon size (~10% larger than the old ROW_H - 8 = 18)
+local ICON_SIZE = 24 -- cell icon size (rows grow with it so icons don't overflow)
 
 local CLASS_ORDER = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
 local MODE_TAG = { auto = "|cff9d9d9da|r", greater = "|cffffd100G|r", normal = "|cffffffffn|r" }

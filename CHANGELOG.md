@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-07-19
+
+Sync protocol stays v4 — this release is compatible with 0.17.x/0.18.x; the
+new sync messages are additive and older clients simply ignore them.
+
+### Added
+- Persistent per-member blessing preferences ("likings"): assigning a member a
+  blessing by hand (window click or `/ho override`) now remembers that wish by
+  character name, permanently and independent of which paladins are present.
+  Auto honors it in every future raid, still behind tank protection and
+  castability, and it syncs to the other paladins so everyone's Auto computes
+  the same plan. New `/ho prefs` lists and clears remembered likings; the
+  member tooltip shows them.
+- Explicit "none" state on the cast bar: mouse-wheeling now cycles
+  ...blessing → none → blessing. Landing on "none" keeps a visible placeholder
+  button (nothing is cast) instead of the button — or the whole bar —
+  disappearing, so you can wheel straight back to a blessing. The state
+  persists across reloads; a full removal is still a right-click in the
+  assignment window.
+- Mouse-wheel scrolling in the assignment window, so a fully expanded 40-man
+  roster stays reachable.
+- Option "Keep cast bar above other windows" for setups whose unit-frame
+  addons would otherwise hide the bar.
+
+### Changed
+- Options now live in the standard Blizzard Interface Options (Interface →
+  AddOns → HolyOrders) instead of a custom window; `/ho opt` and shift-clicking
+  the minimap button open them there.
+- Bare `/ho` opens the assignment window. The command list moved to `/ho help`
+  (player commands) with diagnostics under `/ho help debug`.
+- The cast bar now sits below standard UI panels by default, so windows like
+  the calendar draw over it; opt back into the raised layer with the new
+  option above.
+
+### Fixed
+- Auto could produce an empty plan (and a vanishing bar) for a paladin who
+  cannot cast the top class preference — for example without Blessing of Kings
+  talented; the planner now falls through the whole preference chain.
+- Auto no longer leaves a member unbuffed because an absent paladin's leftover
+  override still occupied them; stale overrides of paladins not in the raid are
+  pruned before planning.
+- Sync messages that would exceed the addon-message size cap are now split into
+  ordered fragments and reassembled instead of being dropped — a paladin with
+  many per-member overrides no longer loses part of a plan.
+- Stale peer entries are pruned when members leave the group.
+- On a refresh, a class-wide greater blessing is recast before override or pet
+  singles that the greater would immediately overwrite.
+
 ## [0.18.0] - 2026-07-19
 
 ### Added

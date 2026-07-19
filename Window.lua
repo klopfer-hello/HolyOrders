@@ -61,7 +61,9 @@ function Window.CycleMyClass(classToken, delta)
 	local cur = plan.class[me] and plan.class[me][classToken]
 	local nextID = CycleClassBlessing(me, classToken, cur and cur.id or 0, delta)
 	HO.Plan.SetClassAssignment(me, classToken, nextID, cur and cur.mode or nil)
-	RefreshAll()
+	-- RefreshAll is declared later in this file and not in scope here
+	Window.Refresh()
+	HO.Bar.Refresh()
 end
 
 -- overrides may force anything castable (eligibility intentionally bypassed)
@@ -136,6 +138,9 @@ local function CellTooltip(cell)
 		local plan = HO.Plan.Active()
 		local cur = plan.player[cell.pally] and plan.player[cell.pally][cell.memberName]
 		GameTooltip:AddLine(string.format(L["override by %s: %s"], cell.pally, cur and BlessingName(cur) or L["none"]), 1, 1, 1)
+		if not cur and cell.inheritedID then
+			GameTooltip:AddLine(string.format(L["inherited from class assignment: %s"], BlessingName(cell.inheritedID)), 0.7, 0.7, 0.7)
+		end
 		GameTooltip:AddLine(L["click: next blessing — right-click: clear"], 0.8, 0.8, 0.8)
 	else
 		GameTooltip:SetText(cell.classToken)
@@ -446,12 +451,34 @@ function Window.Refresh()
 						local cell = RowCell(mrow, c, MemberCellClick)
 						cell.pally, cell.classToken, cell.memberName = pallys[c], nil, entry.name
 						local cur = plan.player[pallys[c]] and plan.player[pallys[c]][entry.name]
+						-- no override: show what this member effectively gets
+						-- from that paladin's class assignment (dimmed)
+						local inheritedID
+						if not cur then
+							local classAssign = plan.class[pallys[c]] and plan.class[pallys[c]][entry.class]
+							if classAssign then
+								if entry.isPet then
+									if HO.Engine.PetIncluded(entry) then
+										inheritedID = (HO.db.options.pets and HO.db.options.pets.blessing) or 2
+									end
+								elseif HO.Data.IsEligible(entry.class, classAssign.id, HO.Plan.IsTank(entry.name, entry.tankRole)) then
+									inheritedID = classAssign.id
+								end
+							end
+						end
+						cell.inheritedID = inheritedID
 						if cur then
 							cell.icon:SetTexture(HO.Data.blessings[cur] and HO.Data.blessings[cur].icon or EMPTY_SLOT)
 							cell.icon:SetDesaturated(false)
+							cell.icon:SetAlpha(1)
+						elseif inheritedID then
+							cell.icon:SetTexture(HO.Data.blessings[inheritedID] and HO.Data.blessings[inheritedID].icon or EMPTY_SLOT)
+							cell.icon:SetDesaturated(false)
+							cell.icon:SetAlpha(0.45)
 						else
 							cell.icon:SetTexture(EMPTY_SLOT)
 							cell.icon:SetDesaturated(true)
+							cell.icon:SetAlpha(1)
 						end
 						cell.mode:SetText("")
 						cell:Show()

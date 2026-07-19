@@ -52,6 +52,7 @@ local function PetIncluded(entry)
 	end
 	return true
 end
+Engine.PetIncluded = PetIncluded
 
 local function TargetBlessing(plan, me, entry)
 	local overrides = plan.player[me]

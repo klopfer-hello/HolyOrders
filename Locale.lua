@@ -46,6 +46,7 @@ L["10-min singles (too few members for greater)"] = "10-Min-Einzelsegen (zu weni
 L["mode: greater — always the Greater Blessing: 30 min, hits the whole class, costs a Symbol of Kings per cast"] = "Modus: Groß — immer der Große Segen: 30 Min, trifft die ganze Klasse, kostet je Wirken ein Symbol der Könige"
 L["mode: normal — always 10-min single blessings on each member, no reagent"] = "Modus: normal — immer 10-Min-Einzelsegen auf jedes Mitglied, ohne Reagenz"
 L["override by %s: %s"] = "Überschreibung durch %s: %s"
+L["inherited from class assignment: %s"] = "geerbt aus Klassen-Zuteilung: %s"
 L["none"] = "keine"
 L["(pet of %s)"] = "(Begleiter von %s)"
 L["[tank]"] = "[Tank]"

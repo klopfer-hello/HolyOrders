@@ -432,6 +432,14 @@ local function AcquireAuraRow()
 	return auraRow
 end
 
+-- user-configurable UI scale for the assignment window. Non-secure, so it is
+-- safe to apply any time (unlike the cast bar).
+function Window.ApplyScale()
+	if win then
+		win:SetScale((HO.db.options.window and HO.db.options.window.scale) or 1)
+	end
+end
+
 function Window.Create()
 	if win then
 		return
@@ -470,10 +478,17 @@ function Window.Create()
 	win.header.bg = win.header:CreateTexture(nil, "BACKGROUND")
 	win.header.bg:SetAllPoints()
 	win.header.bg:SetColorTexture(0.94, 0.78, 0.09, 0.18)
-	-- small expand/collapse-all toggle on the left, before the title
-	win.expandBtn = CreateFrame("Button", nil, win.header, "UIPanelButtonTemplate")
-	win.expandBtn:SetSize(24, 20)
-	win.expandBtn:SetPoint("LEFT", win.header, "LEFT", 6, 0)
+	win.header.title = win.header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	win.header.title:SetPoint("LEFT", 10, 0)
+	win.header.title:SetText(L["HolyOrders — Assignments"])
+
+	-- expand/collapse-all toggle: sits at the top of the NAME column, in the
+	-- column-header band just above the first class row and aligned with the
+	-- per-class "+"/"-" toggles that lead each class row, so it reads as
+	-- "toggle all of these" rather than as a header button
+	win.expandBtn = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
+	win.expandBtn:SetSize(20, 18)
+	win.expandBtn:SetPoint("TOPLEFT", win, "TOPLEFT", 6, -(HEADER_H + 2))
 	win.expandBtn:SetText("+")
 	win.expandBtn:SetScript("OnClick", ToggleExpandAll)
 	win.expandBtn:SetScript("OnEnter", function(self)
@@ -482,10 +497,6 @@ function Window.Create()
 		GameTooltip:Show()
 	end)
 	win.expandBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
-	win.header.title = win.header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	win.header.title:SetPoint("LEFT", 36, 0)
-	win.header.title:SetText(L["HolyOrders — Assignments"])
 
 	-- parent the close button to the window, not the header: the template's
 	-- default OnClick hides its PARENT, which used to hide only the title bar
@@ -531,6 +542,8 @@ function Window.Create()
 	win.hint = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	win.hint:SetPoint("BOTTOMLEFT", 10, 6)
 	win.hint:SetJustifyH("LEFT")
+
+	Window.ApplyScale() -- apply the saved window scale on first open
 end
 
 -- layout ----------------------------------------------------------------------

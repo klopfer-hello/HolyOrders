@@ -15,12 +15,28 @@ local category -- retail Settings category handle (nil on 2.5.6)
 local checks = {}
 local ITEMS
 
+local SCALE_CYCLE = { 0.8, 0.9, 1.0, 1.1, 1.25, 1.5 }
+
 function Options.Ensure()
 	local o = HO.db.options
 	o.bar = o.bar or {}
+	o.bar.scale = o.bar.scale or 1.0
+	o.window = o.window or {} -- o.window.scale defaults to nil (read as 1.0)
 	o.pets = o.pets or { hunter = true, warlock = false, blessing = 2 }
 	o.minimap = o.minimap or { angle = 200 }
 	return o
+end
+
+-- advance a scale value to the next preset in SCALE_CYCLE (wraps)
+local function NextScale(current)
+	local nextScale = SCALE_CYCLE[1]
+	for i, s in ipairs(SCALE_CYCLE) do
+		if s == (current or 1.0) then
+			nextScale = SCALE_CYCLE[i + 1] or SCALE_CYCLE[1]
+			break
+		end
+	end
+	return nextScale
 end
 
 local function Refresh()
@@ -34,6 +50,8 @@ local function Refresh()
 	local blessing = HO.Data.blessings[o.pets.blessing or 2]
 	panel.petBtn:SetText(string.format(L["Pet blessing: %s"], blessing and (blessing.name or blessing.key) or "?"))
 	panel.growBtn:SetText(string.format(L["Bar grows: %s"], o.bar.grow or "right"))
+	panel.barScaleBtn:SetText(string.format(L["Cast bar scale: %d%%"], math.floor((o.bar.scale or 1) * 100 + 0.5)))
+	panel.winScaleBtn:SetText(string.format(L["Window scale: %d%%"], math.floor(((o.window and o.window.scale) or 1) * 100 + 0.5)))
 end
 
 -- toggles that change plan/pet display must also update an open assignment
@@ -142,6 +160,37 @@ function Options.Create()
 		o.pets.blessing = nextID
 		Refresh()
 		RefreshAll()
+	end)
+
+	-- cast bar scale: cycles a preset list; the bar is a protected frame, so
+	-- ApplyScale is combat-guarded and self-applies on PLAYER_REGEN_ENABLED
+	panel.barScaleBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+	panel.barScaleBtn:SetSize(240, 22)
+	panel.barScaleBtn:SetPoint("TOPLEFT", 16, -(buttonsTop + 56))
+	panel.barScaleBtn:SetScript("OnClick", function()
+		local o = Options.Ensure()
+		o.bar.scale = NextScale(o.bar.scale)
+		if HO.Bar and HO.Bar.ApplyScale then
+			HO.Bar.ApplyScale()
+		end
+		Refresh()
+	end)
+
+	-- window scale: applies to the assignment window and the buff-request window
+	panel.winScaleBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+	panel.winScaleBtn:SetSize(240, 22)
+	panel.winScaleBtn:SetPoint("TOPLEFT", 16, -(buttonsTop + 84))
+	panel.winScaleBtn:SetScript("OnClick", function()
+		local o = Options.Ensure()
+		o.window = o.window or {}
+		o.window.scale = NextScale(o.window.scale)
+		if HO.Window and HO.Window.ApplyScale then
+			HO.Window.ApplyScale()
+		end
+		if HO.Request and HO.Request.ApplyScale then
+			HO.Request.ApplyScale()
+		end
+		Refresh()
 	end)
 
 	-- register with whichever options system this client provides

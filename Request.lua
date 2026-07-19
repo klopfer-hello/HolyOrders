@@ -120,6 +120,16 @@ local function Create()
 	local width = PAD * 2 + n * (BTN_SIZE + BTN_GAP) + CLEAR_W
 	local height = 8 + TITLE_H + 6 + BTN_SIZE + 8 + 14 + 14 + PAD
 	frame:SetSize(width, height)
+
+	Request.ApplyScale() -- apply the saved window scale on first open
+end
+
+-- the request window follows the WINDOW scale (it is a "window" too). Non-secure,
+-- so it is safe to apply any time.
+function Request.ApplyScale()
+	if frame then
+		frame:SetScale((HO.db.options.window and HO.db.options.window.scale) or 1)
+	end
 end
 
 -- repaint the icons, the active-request highlight and the status line from the

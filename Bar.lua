@@ -518,6 +518,9 @@ local function CreateFlyout()
 	flyout.title:SetPoint("TOPLEFT", FLYOUT_PAD, -4)
 	flyout.title:SetPoint("TOPRIGHT", -FLYOUT_PAD, -4)
 	flyout.title:SetJustifyH("LEFT")
+	-- the fly-out is parented to UIParent, so it does NOT inherit the bar's scale;
+	-- match it to the configured cast-bar scale here and in Bar.ApplyScale
+	flyout:SetScale(HO.db.options.bar and HO.db.options.bar.scale or 1)
 	flyout:Hide()
 end
 
@@ -826,6 +829,23 @@ local function RefreshAuraButton()
 	auraButton.icon:SetDesaturated(false)
 end
 
+-- user-configurable UI scale for the cast bar. The bar is implicitly protected
+-- (secure buttons anchor to it), so SetScale may only run out of combat — a
+-- combat-time change self-applies on the next PLAYER_REGEN_ENABLED, exactly like
+-- Bar.ApplyStrata. The class/aura buttons are children of the bar, so they scale
+-- with it automatically; only the fly-out (parented to UIParent) needs its own
+-- SetScale to match.
+function Bar.ApplyScale()
+	if not bar or InCombatLockdown() then
+		return
+	end
+	local scale = HO.db.options.bar and HO.db.options.bar.scale or 1
+	bar:SetScale(scale)
+	if flyout then
+		flyout:SetScale(scale)
+	end
+end
+
 function Bar.Create()
 	if bar then
 		return
@@ -887,6 +907,7 @@ function Bar.Create()
 	auraButton = CreateAuraButton() -- always present; follows the bar's visibility
 	LayoutBar()
 	RestorePosition()
+	Bar.ApplyScale() -- apply the saved cast-bar scale (out of combat at login)
 	bar:Hide()
 end
 
@@ -1040,6 +1061,7 @@ HO.RegisterEvent("PLAYER_REGEN_ENABLED", function()
 		Bar.ResetPosition()
 	end
 	Bar.ApplyStrata() -- apply any strata change made during combat
+	Bar.ApplyScale() -- apply any scale change attempted during combat
 	Bar.Refresh()
 end)
 HO.RegisterEvent("PLAYER_REGEN_DISABLED", function()

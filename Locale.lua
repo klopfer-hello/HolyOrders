@@ -28,6 +28,8 @@ L["Log sync messages (debug)"] = "Sync-Nachrichten protokollieren (Debug)"
 L["Keep cast bar above other windows"] = "Leiste über anderen Fenstern halten"
 L["Pet blessing: %s"] = "Begleiter-Segen: %s"
 L["Bar grows: %s"] = "Leiste wächst: %s"
+L["Cast bar scale: %d%%"] = "Leisten-Skalierung: %d%%"
+L["Window scale: %d%%"] = "Fenster-Skalierung: %d%%"
 
 -- assignment window
 L["HolyOrders — Assignments"] = "HolyOrders — Zuteilungen"

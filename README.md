@@ -1,5 +1,7 @@
 # HolyOrders
 
+**[Download on CurseForge](https://www.curseforge.com/wow/addons/holyorders)**
+
 ![HolyOrders](media/banner.png)
 
 Paladin blessing coordination for WoW Classic (TBC Anniversary, 2.5.6) —

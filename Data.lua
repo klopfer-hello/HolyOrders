@@ -71,6 +71,12 @@ function Data.Refresh()
 		blessing.rank = nEntry and nEntry.rank or nil
 		blessing.greaterKnown = gEntry ~= nil
 		blessing.greaterRank = gEntry and gEntry.rank or nil
+		-- numeric rank for buff-strength scoring; rank-less spells count as 1
+		if nEntry then
+			blessing.rankNum = tonumber((nEntry.rank or ""):match("%d+")) or 1
+		else
+			blessing.rankNum = 0
+		end
 	end
 end
 

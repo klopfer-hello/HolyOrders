@@ -73,15 +73,25 @@ local function Available(pallyName, blessingID)
 end
 Planner.IsAvailable = Available
 
+-- buff strength: improvement talents dominate (a maxed talent beats one
+-- spell rank), then spell rank, then greater-version knowledge as tiebreak
 local function Score(pallyName, blessingID)
+	local talent, rank, greater = 0, 0, false
 	if pallyName == HO.FullName("player") then
-		return HO.Talents.ranks[blessingID] or 0
+		talent = HO.Talents.ranks[blessingID] or 0
+		local blessing = HO.Data.blessings[blessingID]
+		rank = (blessing and blessing.rankNum) or 0
+		greater = (blessing and blessing.greaterKnown) or false
+	else
+		local peer = HO.Comm and HO.Comm.peers[pallyName]
+		local caps = peer and peer.caps and peer.caps[blessingID]
+		if caps then
+			talent = caps.talent or 0
+			rank = caps.rank or 0
+			greater = caps.greater or false
+		end
 	end
-	local peer = HO.Comm and HO.Comm.peers[pallyName]
-	if peer and peer.caps and peer.caps[blessingID] then
-		return peer.caps[blessingID].talent
-	end
-	return 0
+	return talent * 12 + rank * 10 + (greater and 1 or 0)
 end
 
 -- substitute for a Salvation class assignment while no-Salvation mode is on:

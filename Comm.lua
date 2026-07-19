@@ -8,7 +8,7 @@ local Comm = {}
 HO.Comm = Comm
 
 local PREFIX = "HolyOrders"
-local PROTO = "2"
+local PROTO = "3" -- v3: caps carry spell ranks for buff-strength scoring
 local SET_DELAY = 1.0
 local HELLO_DELAY = 2.0
 local MAX_MSG = 250 -- WoW addon messages cap at 255 bytes
@@ -111,6 +111,7 @@ local function Caps()
 		parts[id] = (blessing.known and "1" or "0")
 			.. (blessing.greaterKnown and "1" or "0")
 			.. tostring(math.min(HO.Talents.ranks[id] or 0, 9))
+			.. string.format("%02d", math.min(blessing.rankNum or 0, 99))
 	end
 	return table.concat(parts, ",")
 end
@@ -283,6 +284,7 @@ handlers["H"] = function(sender, payload)
 				known = triplet:sub(1, 1) == "1",
 				greater = triplet:sub(2, 2) == "1",
 				talent = tonumber(triplet:sub(3, 3)) or 0,
+				rank = tonumber(triplet:sub(4, 5)) or 0,
 			}
 		end
 	end

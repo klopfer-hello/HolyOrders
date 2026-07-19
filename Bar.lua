@@ -126,6 +126,7 @@ function Bar.Create()
 	bar:SetSize(HANDLE_WIDTH + GAP + MAX_BUTTONS * (BUTTON_SIZE + GAP), BUTTON_SIZE + 4)
 	bar:SetMovable(true)
 	bar:SetClampedToScreen(true)
+	bar:SetFrameStrata("HIGH") -- above raid frames (VuhDo etc.)
 
 	handle = CreateFrame("Frame", nil, bar)
 	handle:SetPoint("TOPLEFT", 0, 0)

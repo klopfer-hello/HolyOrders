@@ -17,13 +17,15 @@ HO.commands["spells"] = function()
 	for id, blessing in ipairs(HO.Data.blessings) do
 		local normal
 		if blessing.known then
-			normal = (blessing.name or blessing.key) .. (blessing.rank and (" [" .. blessing.rank .. "]") or "")
+			local rank = (blessing.rank and blessing.rank ~= "") and (" [" .. blessing.rank .. "]") or ""
+			normal = (blessing.name or blessing.key) .. rank
 		else
 			normal = (blessing.name or blessing.key) .. " — NOT known"
 		end
 		local greater
 		if blessing.greaterKnown then
-			greater = "greater [" .. (blessing.greaterRank or "?") .. "]"
+			local grank = (blessing.greaterRank and blessing.greaterRank ~= "") and (" [" .. blessing.greaterRank .. "]") or ""
+			greater = "greater" .. grank
 		else
 			greater = "no greater"
 		end
@@ -225,6 +227,34 @@ HO.commands["dump"] = function()
 	HO.db.dump = dump
 	HO.Log("dump", "state snapshot stored")
 	HO.Print("state snapshot stored in SavedVariables — do /reload (or log out) so it is written to disk")
+end
+
+-- cast bar --------------------------------------------------------------------
+
+HO.commands["bar"] = function(rest)
+	local opts = HO.db.options.bar or {}
+	HO.db.options.bar = opts
+	local sub = rest:lower()
+	if sub == "lock" then
+		opts.locked = true
+		HO.Print("bar locked")
+	elseif sub == "unlock" then
+		opts.locked = false
+		HO.Print("bar unlocked — drag it by the golden handle")
+	elseif sub == "show" then
+		opts.hidden = false
+		HO.Bar.Refresh()
+		HO.Print("bar shown (appears when you have duties)")
+	elseif sub == "hide" then
+		opts.hidden = true
+		HO.Bar.Refresh()
+		HO.Print("bar hidden")
+	elseif sub == "reset" then
+		HO.Bar.ResetPosition()
+		HO.Print("bar position reset")
+	else
+		HO.Print("usage: /ho bar lock|unlock|show|hide|reset")
+	end
 end
 
 -- auto-planner ----------------------------------------------------------------

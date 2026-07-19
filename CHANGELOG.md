@@ -25,7 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   events); `/ho log [n|clear]` and `/ho dump` state snapshot for offline
   analysis.
 
+- Cast engine: per-class next-target/next-spell selection (missing first, then
+  soonest expiring; override and tank rules applied; greater vs normal by mode).
+- Secure cast bar: movable, lockable, per-duty buttons with counts and timers;
+  combat-consistent display. `/ho bar lock|unlock|show|hide|reset`.
+
 ### Fixed
 - Unicode arrows replaced with ASCII in chat output (rendered as boxes).
+- Rank-less blessings (Salvation, Kings) no longer show an empty rank.
 - Case-insensitive name lookup for `/ho override|tank|spec`; tank no longer
   accepts names outside the roster.

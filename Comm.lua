@@ -490,6 +490,8 @@ handlers["NS"] = function(sender, payload)
 	RefreshUI()
 end
 
+local protoWarned = {}
+
 HO.RegisterEvent("CHAT_MSG_ADDON", function(prefix, message, _, senderFull)
 	if prefix ~= PREFIX then
 		return
@@ -497,6 +499,12 @@ HO.RegisterEvent("CHAT_MSG_ADDON", function(prefix, message, _, senderFull)
 	local sender = senderFull and senderFull:match("^[^%-]+%-[^%-]+") or senderFull
 	local proto, msgType, payload = message:match("^(%d+):(%u+):?(.*)$")
 	if proto ~= PROTO then
+		-- incompatible protocol: warn once per sender instead of silence
+		if proto and sender and sender ~= me and not protoWarned[sender] then
+			protoWarned[sender] = true
+			HO.Log("comm", "protocol mismatch from " .. sender .. " (theirs " .. proto .. ", ours " .. PROTO .. ")")
+			HO.Print(sender .. " runs an incompatible HolyOrders version — sync with them is DISABLED until both run the same version")
+		end
 		return
 	end
 	if sender == me and msgType ~= "PING" then

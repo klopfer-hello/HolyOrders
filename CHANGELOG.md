@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-07-19
+
+### Fixed
+- Incompatible protocol versions in the group are now announced in chat
+  (once per sender) instead of being silently ignored — mixed-version groups
+  looked like "sync randomly broken".
+
 ## [0.15.0] - 2026-07-19
 
 ### Added

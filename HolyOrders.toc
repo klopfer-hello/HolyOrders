@@ -9,6 +9,7 @@
 
 HolyOrders.lua
 Locale.lua
+Colors.lua
 Data.lua
 Talents.lua
 Roster.lua

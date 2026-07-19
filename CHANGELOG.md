@@ -17,3 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   roster with silent re-apply on exact match and suggestion on similar rosters.
 - Plan commands: `/ho plan show|save|list|apply|delete`, `/ho assign`,
   `/ho override`, `/ho tank`.
+- Deterministic auto-planner (`/ho auto`): blessing coverage by talent score,
+  solo-raid Salvation mode with tank protection, per-member preference singles.
+- Class/spec blessing preferences with shipped defaults; `/ho spec` tags a
+  member's spec for the planner.

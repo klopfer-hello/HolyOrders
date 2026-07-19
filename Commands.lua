@@ -182,6 +182,60 @@ HO.commands["override"] = function(rest)
 	end
 end
 
+-- auto-planner ----------------------------------------------------------------
+
+HO.commands["auto"] = function()
+	local ok, msg = HO.Planner.Run()
+	if ok then
+		HO.Print("auto-plan: " .. msg)
+		HO.Print("'/ho plan show' for details, '/ho plan save [label]' to keep it")
+	else
+		HO.Print("auto-plan failed: " .. msg)
+	end
+end
+
+HO.commands["spec"] = function(rest)
+	local target, spec = rest:match("^(%S+)%s*(%S*)$")
+	if not target then
+		HO.Print("usage: /ho spec <playerName> [<spec>|clear] — tags a member's spec for the planner")
+		return
+	end
+	local entry
+	for name, e in pairs(HO.Roster.byName) do
+		if name == target or name:match("^([^%-]+)") == target then
+			target, entry = name, e
+			break
+		end
+	end
+	if not entry then
+		HO.Print("'" .. target .. "' is not in the roster")
+		return
+	end
+	local valid = HO.Planner.ValidSpecs(entry.class)
+	spec = (spec or ""):lower()
+	if spec == "" then
+		HO.Print(target .. " spec: " .. (HO.db.specCache[target] or "not set")
+			.. (#valid > 0 and (" — valid: " .. table.concat(valid, ", ")) or ""))
+	elseif spec == "clear" then
+		HO.db.specCache[target] = nil
+		HO.Print(target .. " spec tag cleared")
+	else
+		local ok = false
+		for _, s in ipairs(valid) do
+			if s == spec then
+				ok = true
+			end
+		end
+		if not ok then
+			HO.Print("invalid spec for " .. entry.class
+				.. (#valid > 0 and (" — valid: " .. table.concat(valid, ", ")) or " (no spec rules for this class)"))
+			return
+		end
+		HO.db.specCache[target] = spec
+		HO.Print(target .. " tagged as " .. spec)
+	end
+end
+
 HO.commands["tank"] = function(rest)
 	local target = rest:match("^(%S+)$")
 	if not target then

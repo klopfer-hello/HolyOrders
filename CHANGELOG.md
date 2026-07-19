@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-19
+
+### Added
+- Cast bar growth direction: right, left, down or up (options panel or
+  `/ho bar grow <dir>`); the drag handle stays at the origin end.
+
 ## [0.8.0] - 2026-07-19
 
 ### Added

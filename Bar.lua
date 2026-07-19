@@ -484,7 +484,20 @@ function FlyoutRefresh()
 	-- fly out to the LEFT of the class button (top-aligned), like the classic
 	-- paladin buff addons; SetClampedToScreen keeps it on-screen near an edge
 	flyout:SetPoint("TOPRIGHT", anchor, "TOPLEFT", -4, 0)
-	flyout.title:SetText(flyoutClass)
+	-- header = class name + a compact coverage summary (folded in from the old
+	-- class tooltip, which is now suppressed while the fly-out is open)
+	local task = HO.Engine.tasks[flyoutClass]
+	local status = ""
+	if task and not task.noneAssigned then
+		if (task.missing or 0) > 0 then
+			status = "  |cffff6060" .. string.format(L["%d missing"], task.missing) .. "|r"
+		elseif (task.outOfRange or 0) > 0 then
+			status = "  |cffffcc55" .. string.format("%d %s", task.outOfRange, L["out of range"]) .. "|r"
+		else
+			status = "  |cff60ff60" .. L["all covered"] .. "|r"
+		end
+	end
+	flyout.title:SetText(flyoutClass .. status)
 
 	local members = HO.Engine.ClassMembers(flyoutClass)
 	local count = #members
@@ -578,6 +591,12 @@ local function CreateButton(index)
 		-- the cursor is on the button
 		CancelClose()
 		FlyoutShow(task.classToken)
+		if flyout and flyout:IsShown() then
+			-- the fly-out already shows the class, its members and coverage, so
+			-- the big class tooltip would just be redundant noise on top of it
+			return
+		end
+		-- in combat the fly-out stays closed, so the tooltip is the info source
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
 		local blessing = HO.Data.blessings[task.blessingID]
 		GameTooltip:SetText(task.classToken)

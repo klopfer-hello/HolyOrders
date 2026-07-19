@@ -821,8 +821,8 @@ end
 
 -- aura-button visuals + secure self-cast attribute. The attribute is written
 -- only out of combat; the combat branch refreshes the icon alone. The icon is
--- greyed out (desaturated + dimmed) when the assigned aura is already active,
--- so a bright icon means "still needs to be activated".
+-- greyed out (desaturated + dimmed) when the assigned aura is NOT active, so a
+-- bright icon means the correct aura is up.
 local function RefreshAuraButton()
 	if not auraButton then
 		return
@@ -831,7 +831,7 @@ local function RefreshAuraButton()
 	local id = me and HO.Plan.GetAura(me)
 	local aura = id and HO.Data.auras[id]
 	local castable = aura and aura.known and aura.name
-	local active = castable and PlayerHasAura(aura.name)
+	local dim = castable and not PlayerHasAura(aura.name)
 	if InCombatLockdown() then
 		auraButton.icon:SetTexture((castable and aura.icon) or NONE_ICON)
 		auraButton.icon:SetDesaturated(active or false)
@@ -847,8 +847,8 @@ local function RefreshAuraButton()
 		auraButton:SetAttribute("spell1", nil)
 		auraButton.icon:SetTexture(NONE_ICON)
 	end
-	auraButton.icon:SetDesaturated(active or false)
-	auraButton.icon:SetAlpha(active and 0.45 or 1)
+	auraButton.icon:SetDesaturated(dim or false)
+	auraButton.icon:SetAlpha(dim and 0.45 or 1)
 end
 
 -- user-configurable UI scale for the cast bar. The bar is implicitly protected

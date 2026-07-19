@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-07-19
+
+### Added
+- Member rows show the effective blessing: cells without an override display
+  the blessing inherited from the class assignment (dimmed), including pets
+  and tank exceptions; the tooltip names the inherited source.
+
+### Fixed
+- Wheel-cycling on the bar threw a hidden error and only refreshed the UI on
+  the next ticker; it now updates bar and window immediately.
+
 ## [0.14.0] - 2026-07-19
 
 ### Changed

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-07-19
+
+### Fixed
+- Tanks could still receive Salvation: the engine now refuses to resolve a
+  greater Salvation over any class containing a tank (even when the tank was
+  marked after planning; an explicitly forced greater mode is respected), and
+  the party planner applies the same tank rules as the raid branch.
+- Protection-tagged players (manual or inspect-inferred) now count as tanks
+  everywhere: Salvation protection, Kings singles, planner and window display.
+
 ## [0.9.0] - 2026-07-19
 
 ### Added

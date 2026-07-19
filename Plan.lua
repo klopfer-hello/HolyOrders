@@ -110,6 +110,19 @@ function Plan.SetClassAssignment(paladin, classToken, blessingID, mode)
 	end
 end
 
+-- explicit "none" for a class: a placeholder marker (no id) that keeps a visible,
+-- re-assignable slot instead of removing the duty. Local-only — it serializes as
+-- absence (unassigned) on the wire, so peers treat the class as cleared.
+function Plan.SetClassNone(paladin, classToken)
+	local plan = Plan.Active()
+	plan.class[paladin] = plan.class[paladin] or {}
+	plan.class[paladin][classToken] = { none = true }
+	MarkDirty(plan)
+	if HO.Comm then
+		HO.Comm.OnClassEdited(paladin, classToken)
+	end
+end
+
 function Plan.SetPlayerOverride(paladin, targetName, blessingID)
 	local plan = Plan.Active()
 	plan.player[paladin] = plan.player[paladin] or {}

@@ -279,7 +279,9 @@ local function SerializeRow(owner)
 	local classParts = {}
 	for classToken, a in pairs(plan.class[owner] or {}) do
 		local code = CLASS_CODE[classToken]
-		if code then
+		-- an explicit-none marker (no numeric id) is local-only: skip it so the
+		-- wire shows the class as unassigned (identical semantics for peers)
+		if code and a.id then
 			table.insert(classParts, code .. a.id .. (MODE_CODE[a.mode] or "a"))
 		end
 	end

@@ -106,6 +106,19 @@ local function RestorePosition()
 	end
 end
 
+-- frame strata is user-configurable: default "LOW" keeps the bar below standard
+-- Blizzard windows (calendar, group finder) yet above the world; opt-in "HIGH"
+-- lifts it over unit-frame addons (VuhDo etc.) that would otherwise cover it.
+-- The bar is implicitly protected (secure buttons anchor to it), so SetFrameStrata
+-- may only run out of combat; a combat-time toggle re-applies on the next
+-- PLAYER_REGEN_ENABLED refresh.
+function Bar.ApplyStrata()
+	if not bar or InCombatLockdown() then
+		return
+	end
+	bar:SetFrameStrata(BarOptions().front and "HIGH" or "LOW")
+end
+
 local function FormatShort(seconds)
 	if not seconds then
 		return ""
@@ -185,6 +198,11 @@ local function CreateButton(index)
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
 		local blessing = HO.Data.blessings[task.blessingID]
 		GameTooltip:SetText(task.classToken)
+		if task.noneAssigned then
+			GameTooltip:AddLine(L["no blessing assigned — wheel to assign"], 0.8, 0.8, 0.8)
+			GameTooltip:Show()
+			return
+		end
 		if task.spellName and task.unitName then
 			GameTooltip:AddLine(string.format(L["left: %s on %s"], task.spellName, task.unitName), 1, 1, 1)
 			if task.singleSpellName and task.singleSpellName ~= task.spellName then
@@ -220,7 +238,7 @@ function Bar.Create()
 	bar = CreateFrame("Frame", "HolyOrdersBar", UIParent)
 	bar:SetMovable(true)
 	bar:SetClampedToScreen(true)
-	bar:SetFrameStrata("HIGH") -- above raid frames (VuhDo etc.)
+	bar:SetFrameStrata(BarOptions().front and "HIGH" or "LOW") -- see Bar.ApplyStrata
 
 	handle = CreateFrame("Frame", nil, bar)
 	handle:SetPoint("TOPLEFT", 0, 0)
@@ -346,7 +364,9 @@ function Bar.Refresh()
 			btn:SetAttribute("spell2", task.singleSpellName)
 			btn:SetAttribute("unit2", task.unit)
 			btn.icon:SetTexture(task.icon)
-			btn.icon:SetDesaturated(task.spellName == nil)
+			-- placeholder (none) buttons show their icon at full colour; ordinary
+			-- passive tasks (nothing to cast right now) stay desaturated
+			btn.icon:SetDesaturated(task.spellName == nil and not task.noneAssigned)
 			local coords = CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[classToken]
 			if coords then
 				btn.classIcon:SetTexCoord(unpack(coords))
@@ -403,5 +423,6 @@ HO.RegisterEvent("PLAYER_REGEN_ENABLED", function()
 		pendingReset = nil
 		Bar.ResetPosition()
 	end
+	Bar.ApplyStrata() -- apply any strata change made during combat
 	Bar.Refresh()
 end)

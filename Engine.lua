@@ -79,7 +79,10 @@ local function TargetBlessing(plan, me, entry)
 		local ownerEntry = entry.owner and HO.Roster.byName[entry.owner]
 		local ownerClass = ownerEntry and ownerEntry.class
 		local assigns = plan.class[me]
-		if ownerClass and assigns and assigns[ownerClass] then
+		local ownerAssign = ownerClass and assigns and assigns[ownerClass]
+		-- a none-marked owner class (no id) is not a real assignment: its pets
+		-- are not my duty either
+		if ownerAssign and ownerAssign.id then
 			local petOpts = HO.db.options.pets
 			return (petOpts and petOpts.blessing) or 2, false
 		end
@@ -87,7 +90,9 @@ local function TargetBlessing(plan, me, entry)
 	end
 	local assigns = plan.class[me]
 	local assign = assigns and entry.class and assigns[entry.class]
-	if assign then
+	-- an explicit-none assignment (no id) yields no blessing, exactly like an
+	-- unassigned class: its members are not my targets
+	if assign and assign.id then
 		return assign.id, false
 	end
 	return nil, false
@@ -327,6 +332,34 @@ function Engine.Update()
 				reachable = reachable,
 				overrideOnly = (assign == nil) and true or nil,
 			}
+		end
+	end
+
+	-- placeholder tasks for classes I explicitly set to "none": keep a visible,
+	-- re-assignable slot (with a "no blessing" icon) instead of dropping the
+	-- button, but only where the class actually has a non-pet member present.
+	-- Nothing is castable, so no spellName/unit/blessingID — consumers must guard
+	-- on noneAssigned / nil blessingID. Skip a class that already produced a real
+	-- task (e.g. a lingering member override) so we never clobber castable work.
+	local myRows = plan.class[me]
+	if myRows then
+		local classHasMember = {}
+		for _, entry in ipairs(HO.Roster.units) do
+			if entry.name and entry.class and not entry.isPet then
+				classHasMember[entry.class] = true
+			end
+		end
+		for classToken, assign in pairs(myRows) do
+			if assign and assign.none and classHasMember[classToken] and not Engine.tasks[classToken] then
+				Engine.tasks[classToken] = {
+					classToken = classToken,
+					noneAssigned = true,
+					missing = 0,
+					expiring = 0,
+					outOfRange = 0,
+					icon = "Interface\\Buttons\\UI-GroupLoot-Pass-Up",
+				}
+			end
 		end
 	end
 

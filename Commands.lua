@@ -80,7 +80,11 @@ HO.commands["plan"] = function(rest)
 		for paladin, classes in pairs(plan.class) do
 			HO.PrintLine(paladin .. ":")
 			for classToken, a in pairs(classes) do
-				HO.PrintLine(string.format("   %s > %s (%s)", classToken, BlessingLabel(a.id), a.mode))
+				if a.id then
+					HO.PrintLine(string.format("   %s > %s (%s)", classToken, BlessingLabel(a.id), a.mode or "auto"))
+				else
+					HO.PrintLine(string.format("   %s > none (explicit)", classToken))
+				end
 			end
 		end
 		for paladin, targets in pairs(plan.player) do

@@ -26,6 +26,7 @@ local FIRST_ROW_OFFSET = 20 -- gap between the column headers and the first row
 local CLASS_ORDER = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
 local MODE_TAG = { auto = "|cff9d9d9da|r", greater = "|cffffd100G|r", normal = "|cffffffffn|r" }
 local EMPTY_SLOT = "Interface\\PaperDoll\\UI-Backpack-EmptySlot"
+local NONE_ICON = "Interface\\Buttons\\UI-GroupLoot-Pass-Up" -- explicit-none marker (matches the bar)
 
 local win
 local expanded = {} -- [classToken] = true
@@ -85,8 +86,17 @@ function Window.CycleMyClass(classToken, delta)
 	end
 	local plan = HO.Plan.Active()
 	local cur = plan.class[me] and plan.class[me][classToken]
+	-- ring: each castable blessing, then NONE (a visible, re-assignable placeholder),
+	-- then back to the first blessing. A none marker starts the cycle at 0 (like an
+	-- unassigned class), so wheel-up lands on the first blessing and wheel-down on
+	-- the last. This ring NEVER produces the true-clear state — that stays a
+	-- right-click in the assignment window.
 	local nextID = CycleClassBlessing(me, classToken, cur and cur.id or 0, delta)
-	HO.Plan.SetClassAssignment(me, classToken, nextID, cur and cur.mode or nil)
+	if nextID == 0 then
+		HO.Plan.SetClassNone(me, classToken)
+	else
+		HO.Plan.SetClassAssignment(me, classToken, nextID, cur and cur.mode or nil)
+	end
 	-- RefreshAll is declared later in this file and not in scope here
 	Window.Refresh()
 	HO.Bar.Refresh()
@@ -132,7 +142,9 @@ local function ClassCellClick(cell, mouseBtn)
 	if mouseBtn == "RightButton" then
 		HO.Plan.SetClassAssignment(cell.pally, cell.classToken, 0)
 	elseif IsShiftKeyDown() then
-		if cur then
+		-- a none marker has no id/mode to cycle; leave it (wheel or a left-click
+		-- re-assigns it to a real blessing first)
+		if cur and cur.id then
 			local nextMode = (cur.mode == "auto" and "greater") or (cur.mode == "greater" and "normal") or "auto"
 			HO.Plan.SetClassAssignment(cell.pally, cell.classToken, cur.id, nextMode)
 		end
@@ -192,7 +204,9 @@ local function CellTooltip(cell)
 		GameTooltip:SetText(cell.classToken)
 		local plan = HO.Plan.Active()
 		local cur = plan.class[cell.pally] and plan.class[cell.pally][cell.classToken]
-		if cur then
+		if cur and cur.none then
+			GameTooltip:AddLine(L["no blessing assigned"], 1, 1, 1)
+		elseif cur then
 			GameTooltip:AddLine(cell.pally .. ": " .. BlessingName(cur.id), 1, 1, 1)
 			local n = cell.memberCount or 0
 			local min = HO.db.options.greaterMin or 2
@@ -452,7 +466,13 @@ function Window.Refresh()
 				cell.pally, cell.classToken, cell.memberName = pallys[c], classToken, nil
 				cell.memberCount = playerCount
 				local cur = plan.class[pallys[c]] and plan.class[pallys[c]][classToken]
-				if cur then
+				if cur and cur.none then
+					-- explicit-none: a visible placeholder (no mode tag) the user can
+					-- wheel/click back to a real blessing
+					cell.icon:SetTexture(NONE_ICON)
+					cell.icon:SetDesaturated(false)
+					cell.mode:SetText("")
+				elseif cur then
 					cell.icon:SetTexture(HO.Data.blessings[cur.id] and HO.Data.blessings[cur.id].icon or EMPTY_SLOT)
 					cell.icon:SetDesaturated(false)
 					cell.mode:SetText(MODE_TAG[cur.mode] or "")
@@ -534,13 +554,17 @@ function Window.Refresh()
 								if HO.Engine.PetIncluded(entry) then
 									local ownerEntry = entry.owner and HO.Roster.byName[entry.owner]
 									local ownerClass = ownerEntry and ownerEntry.class
-									if ownerClass and plan.class[pallys[c]] and plan.class[pallys[c]][ownerClass] then
+									local ownerAssign = ownerClass and plan.class[pallys[c]] and plan.class[pallys[c]][ownerClass]
+									-- a none-marked owner class inherits nothing to its pets
+									if ownerAssign and ownerAssign.id then
 										inheritedID = (HO.db.options.pets and HO.db.options.pets.blessing) or 2
 									end
 								end
 							else
 								local classAssign = plan.class[pallys[c]] and plan.class[pallys[c]][entry.class]
-								if classAssign and HO.Data.IsEligible(entry.class, classAssign.id, HO.Plan.IsTank(entry.name, entry.tankRole)) then
+								-- a none-marked class assignment (no id) inherits NOTHING: the
+								-- member cell shows empty, not a none icon
+								if classAssign and classAssign.id and HO.Data.IsEligible(entry.class, classAssign.id, HO.Plan.IsTank(entry.name, entry.tankRole)) then
 									inheritedID = classAssign.id
 								end
 							end

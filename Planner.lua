@@ -128,7 +128,8 @@ function Planner.SalvSubstitute(pally, classToken, plan)
 	for otherPally, rows in pairs(plan.class) do
 		if otherPally ~= pally then
 			local a = rows[classToken]
-			if a then
+			-- explicit-none markers carry no id
+			if a and a.id then
 				received[a.id] = true
 			end
 		end

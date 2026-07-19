@@ -10,8 +10,14 @@ local L = HO.L
 
 local BUTTON_SIZE = 34
 local GAP = 5
-local HANDLE_WIDTH = 12
+local HANDLE_WIDTH = 16 -- slim rail + gem knob ("compact gem node")
 local MAX_BUTTONS = 9
+
+-- handle "gem node" sprite: a golden rail with a faceted gem knob. The gem
+-- colour is the status light — a red-gem variant is swapped in while a force
+-- rebuff is active. Bundled TGA, referenced without extension.
+local HANDLE_TEX = "Interface\\AddOns\\HolyOrders\\Icons\\GemHandle"
+local HANDLE_TEX_ACTIVE = "Interface\\AddOns\\HolyOrders\\Icons\\GemHandleActive"
 local UPDATE_INTERVAL = 1.0
 local NONE_ICON = "Interface\\Buttons\\UI-GroupLoot-Pass-Up" -- "no aura" placeholder (matches the window)
 -- colour language for status borders: green = everyone has their assigned buff,
@@ -52,6 +58,12 @@ local function LayoutBar()
 		handle:SetPoint("TOP", bar, "TOP", 0, 0)
 	else -- up
 		handle:SetPoint("BOTTOM", bar, "BOTTOM", 0, 0)
+	end
+	-- the sprite is a horizontal rail; rotate it 90° when the bar (and thus the
+	-- handle) runs vertically so the rail lines up with the buttons. Aspect stays
+	-- ~2:1 either way, so the gem does not distort.
+	if handle.tex and handle.tex.SetRotation then
+		handle.tex:SetRotation(horizontal and (math.pi / 2) or 0)
 	end
 	-- anchor a frame at a linear distance from the origin end, for the current
 	-- grow direction (the origin end is always where the handle sits)
@@ -863,11 +875,12 @@ function Bar.Create()
 	handle:SetSize(HANDLE_WIDTH, BUTTON_SIZE)
 	handle:EnableMouse(true)
 	handle:RegisterForDrag("LeftButton")
-	-- ARTWORK (not BACKGROUND) so the golden grip is not the first thing occluded
-	-- when the bar is raised above other windows
+	-- the bundled gem-node sprite (golden rail + faceted gem) fills the handle;
+	-- it is rotated for vertical bars in LayoutBar, and swapped to the red-gem
+	-- variant while a force rebuff is active
 	handle.tex = handle:CreateTexture(nil, "ARTWORK")
 	handle.tex:SetAllPoints()
-	handle.tex:SetColorTexture(0.94, 0.78, 0.09, 0.55)
+	handle.tex:SetTexture(HANDLE_TEX)
 	handle:SetScript("OnDragStart", function()
 		if InCombatLockdown() then
 			return -- moving the protected bar in combat would taint it
@@ -937,9 +950,9 @@ function Bar.Refresh()
 	HO.Engine.Update()
 	if handle then
 		if HO.Engine.ForceActive() then
-			handle.tex:SetColorTexture(0.85, 0.20, 0.10, 0.80)
+			handle.tex:SetTexture(HANDLE_TEX_ACTIVE) -- red gem: rebuff active
 		else
-			handle.tex:SetColorTexture(0.94, 0.78, 0.09, 0.55)
+			handle.tex:SetTexture(HANDLE_TEX) -- blue gem at rest
 		end
 	end
 

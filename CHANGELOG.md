@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-07-19
+
+### Added
+- Version guard messages: when sync is disabled because of incompatible
+  protocol versions, chat now says WHO is outdated (you or the other paladin)
+  and where to download the update. When a group member runs a newer but
+  still compatible release, you get a one-time update hint per session —
+  sync keeps working in that case.
+
+(Sync is, and stays, hard-gated on the protocol version: any release that
+changes the sync format bumps it, and mismatched clients ignore each other's
+messages entirely — mixed protocols can never half-apply anything.)
+
 ## [0.17.0] - 2026-07-19
 
 Results of the second full adversarial review. **Sync protocol v4 — breaking:

@@ -125,6 +125,11 @@ function Plan.SetPlayerOverride(paladin, targetName, blessingID)
 end
 
 function Plan.ToggleTank(name)
+	-- gate here too so no future caller can bypass the tank-flag permission
+	-- (nil-safe when Comm is not loaded)
+	if HO.Comm and HO.Comm.CanFlagTank and not HO.Comm.CanFlagTank(name) then
+		return nil
+	end
 	local plan = Plan.Active()
 	local flagged
 	if plan.tanks[name] then
@@ -142,15 +147,22 @@ function Plan.ToggleTank(name)
 end
 
 -- is this character a tank for planning purposes? Manual flag, raid MAINTANK
--- role, or an unambiguous protection spec tag (manual or inspect-inferred).
+-- role, local protection spec tag, or the synced spec overlay (so every client
+-- computes the same tank set even when their inspect results diverge).
 function Plan.IsTank(name, tankRole)
-	if tankRole then
-		return true
-	end
 	if name and Plan.Active().tanks[name] then
-		return true
+		return true -- manual tank flag
 	end
-	return name ~= nil and HO.db.specCache[name] == "protection"
+	if tankRole then
+		return true -- raid MAINTANK role
+	end
+	if name and HO.db.specCache[name] == "protection" then
+		return true -- local spec tag (manual or inspect-inferred)
+	end
+	if name and HO.Comm and HO.Comm.specSync[name] == "protection" then
+		return true -- synced overlay from another client
+	end
+	return false
 end
 
 -- temporary no-Salvation mode -------------------------------------------------
@@ -165,11 +177,43 @@ end
 
 function Plan.SetNoSalvation(enable)
 	if enable then
+		-- never overwrite an existing snapshot (F2): two leads racing must not
+		-- snapshot each other's already-swapped plan
 		if HO.db.salvSnapshot then
 			return false, "already active"
 		end
-		HO.db.salvSnapshot = Copy(Plan.Active())
 		local plan = Plan.Active()
+		-- nothing to swap → do nothing, so a race cannot snapshot an already
+		-- Salvation-free plan and then be unable to restore Salvation (F1)
+		local hasSalv = false
+		for _, rows in pairs(plan.class) do
+			for _, a in pairs(rows) do
+				if a.id == SALVATION then
+					hasSalv = true
+					break
+				end
+			end
+			if hasSalv then
+				break
+			end
+		end
+		if not hasSalv then
+			for _, targets in pairs(plan.player) do
+				for _, id in pairs(targets) do
+					if id == SALVATION then
+						hasSalv = true
+						break
+					end
+				end
+				if hasSalv then
+					break
+				end
+			end
+		end
+		if not hasSalv then
+			return false, "no Salvation assignments to swap"
+		end
+		HO.db.salvSnapshot = Copy(plan)
 		local changed = 0
 		for pally, rows in pairs(plan.class) do
 			for classToken, a in pairs(rows) do
@@ -241,6 +285,7 @@ function Plan.Save(label)
 		return nil
 	end
 	local stored = Copy(Plan.Active())
+	stored.rev = nil -- stored plans never carry revision state
 	stored.meta.lastUsed = time()
 	stored.meta.dirty = nil
 	if label and label ~= "" then
@@ -265,33 +310,60 @@ local function OnRosterChanged()
 	end
 	local sig = Plan.CurrentSignature()
 	if sig == "" or sig == lastHandledSig then
+		if Plan.suggestion ~= sig then
+			Plan.suggestion = nil -- a suggestion from a different roster is stale
+		end
 		return
 	end
 	lastHandledSig = sig
 	if sig == HO.db.activeSignature then
+		if Plan.suggestion ~= sig then
+			Plan.suggestion = nil -- stale suggestion from a different roster
+		end
 		return -- same roster as the active plan; nothing to do
 	end
 	local stored = HO.db.plans[sig]
 	if stored then
-		-- never silently overwrite unsaved edits; offer the plan instead
 		local active = Plan.Active()
-		if active.meta and active.meta.dirty then
-			HO.db.activeSignature = sig
+		local dirty = active.meta and active.meta.dirty
+		-- no-Salvation mode must survive a roster change: auto-applying a stored
+		-- plan would resurrect the swapped-out Salvation mid-encounter
+		local noSalv = Plan.NoSalvationActive() or HO.db.noSalvBy
+		if dirty or noSalv then
+			-- offer instead of applying; do NOT stamp activeSignature (nothing
+			-- was applied)
 			Plan.suggestion = sig
-			HO.Log("plan", "stored plan for " .. sig .. " offered (unsaved edits present)")
-			HO.Print(L("stored plan for this roster available — '/ho plan apply' loads it (your unsaved edits are kept until then)"))
+			HO.Log("plan", "stored plan for " .. sig .. " offered (auto-apply suppressed)")
+			if dirty then
+				HO.Print(L("stored plan for this roster available — '/ho plan apply' loads it (your unsaved edits are kept until then)")
+					.. (noSalv and " (no-Salvation mode active)" or ""))
+			else
+				HO.Print("stored plan for this roster available — '/ho plan apply' loads it (no-Salvation mode active)")
+			end
 			return
 		end
+		-- adopt the stored plan; carry the CURRENT rev table forward so peers
+		-- accept the restored rows (stored plans hold no rev of their own)
+		local prevRev = Copy(Plan.Active().rev or {})
 		HO.db.activePlan = Copy(stored)
+		HO.db.activePlan.rev = prevRev
 		HO.db.activePlan.meta.dirty = nil
 		HO.db.activeSignature = sig
 		stored.meta.lastUsed = time()
 		Plan.suggestion = nil
 		HO.Log("plan", "auto-applied stored plan for " .. sig)
 		HO.Print(L("stored plan applied for this paladin roster") .. (stored.meta.name and (" ('" .. stored.meta.name .. "')") or ""))
-		-- a lead broadcasts the restored plan so the raid converges on it
-		if HO.Comm and HO.Comm.SendPlanApply() then
-			HO.Print(L("plan broadcast to the group"))
+		-- the automatic broadcast fires on every privileged client at once;
+		-- gate it to the actual group leader. Other privileged clients apply
+		-- locally and only re-sync their own row.
+		if HO.Comm then
+			if UnitIsGroupLeader("player") then
+				if HO.Comm.SendPlanApply() then
+					HO.Print(L("plan broadcast to the group"))
+				end
+			else
+				HO.Comm.BroadcastOwnRow()
+			end
 		end
 		return
 	end
@@ -322,7 +394,11 @@ function Plan.ApplySuggestion()
 	if not stored then
 		return false
 	end
+	-- carry the current rev table forward so peers accept the loaded rows
+	-- (stored plans hold no rev of their own)
+	local prevRev = Copy(Plan.Active().rev or {})
 	HO.db.activePlan = Copy(stored)
+	HO.db.activePlan.rev = prevRev
 	HO.db.activePlan.meta.dirty = nil
 	HO.db.activeSignature = Plan.CurrentSignature()
 	stored.meta.lastUsed = time()

@@ -46,7 +46,7 @@ local SKIN_BTN_PUSH = "Interface\\AddOns\\HolyOrders\\Icons\\WindowButtonPushed"
 local SKIN_CLOSE = "Interface\\AddOns\\HolyOrders\\Icons\\WindowClose"
 local SKIN_CLOSE_HI = "Interface\\AddOns\\HolyOrders\\Icons\\WindowCloseHi"
 local SKIN_GEM = "Interface\\AddOns\\HolyOrders\\Icons\\TitleGem"
-local SKIN_BRAND = "Interface\\AddOns\\HolyOrders\\Icons\\HolyOrders"
+local SKIN_BRAND = "Interface\\AddOns\\HolyOrders\\Icons\\Logo"
 local SKIN_CORNER = 16 -- corner piece drawn at this many pixels (never stretched)
 local SKIN_TCX = 24 / 1240 -- source corner width as a texcoord fraction (1240 px wide)
 local SKIN_TCY = 24 / 364 -- source corner height as a texcoord fraction (364 px tall)
@@ -596,12 +596,14 @@ function Window.Create()
 
 	BuildWindowSkin(win) -- dark rounded panel + thin gold border (decorative; tracks size)
 
-	-- addon crest tucked into the bottom-right corner (subtle, behind the hint text)
+	-- addon crest in the bottom-right, seated just above the hint line. It draws on
+	-- ARTWORK, so every row/cell/header/hint renders over it: in a full roster the
+	-- grid covers it, in a small one it shows as an emblem in the empty area.
 	win.brand = win:CreateTexture(nil, "ARTWORK")
-	win.brand:SetSize(22, 22)
-	win.brand:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -10, 8)
+	win.brand:SetSize(64, 64)
+	win.brand:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -12, BOTTOM_PAD + 2)
 	win.brand:SetTexture(SKIN_BRAND)
-	win.brand:SetAlpha(0.55)
+	win.brand:SetAlpha(0.9)
 
 	win.header = CreateFrame("Frame", nil, win)
 	win.header:SetPoint("TOPLEFT")
@@ -699,7 +701,7 @@ function Window.Create()
 	win.colHeader = {}
 	win.hint = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	win.hint:SetPoint("BOTTOMLEFT", 10, 6)
-	win.hint:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -36, 6) -- leave the corner for the crest
+	win.hint:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -10, 6)
 	win.hint:SetJustifyH("LEFT")
 
 	Window.ApplyScale() -- apply the saved window scale on first open

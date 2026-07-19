@@ -14,6 +14,7 @@ local PROTO = "4"
 local SET_DELAY = 1.0
 local HELLO_DELAY = 2.0
 local MAX_MSG = 250 -- WoW addon messages cap at 255 bytes
+local MAX_FRAGMENTS = 10 -- messages needing more chunks than this are dropped, not sent
 
 -- compact wire encoding: class tokens and modes as single characters so a
 -- full row stays far below the message size cap
@@ -143,6 +144,11 @@ local function CancelQueued(msgType)
 	end
 end
 
+-- transparent fragmentation: a message whose wire would exceed MAX_MSG is split
+-- into "PROTO:FG:k:<chunk>" fragments (k = B first, C middle, E last), enqueued
+-- back-to-back so both WoW and our FIFO preserve their order; the receiver
+-- reassembles and dispatches the original TYPE:payload. Nothing legitimate needs
+-- more than MAX_FRAGMENTS chunks, so anything larger is logged and dropped.
 local function Send(msg, channel, target)
 	channel = channel or Channel()
 	if not channel then
@@ -152,11 +158,32 @@ local function Send(msg, channel, target)
 		HO.Log("tx", channel .. (target and ("/" .. target) or "") .. " " .. msg:sub(1, 120))
 	end
 	local wire = PROTO .. ":" .. msg
-	if #wire > MAX_MSG then
-		HO.Log("comm", "OVERSIZED message dropped (" .. #wire .. "b): " .. wire:sub(1, 60))
+	if #wire <= MAX_MSG then
+		Throttle(wire, channel, target, msg:match("^(%u+)"))
 		return
 	end
-	Throttle(wire, channel, target, msg:match("^(%u+)"))
+	local maxChunk = MAX_MSG - (#PROTO + 6) -- room left after the "PROTO:FG:k:" header
+	local total = math.ceil(#msg / maxChunk)
+	if total > MAX_FRAGMENTS then
+		HO.Log("comm", "message too large to fragment (" .. #wire .. "b) dropped: " .. wire:sub(1, 60))
+		return
+	end
+	local pos = 1
+	local first = true
+	while pos <= #msg do
+		local chunk = msg:sub(pos, pos + maxChunk - 1)
+		pos = pos + maxChunk
+		local k
+		if first then
+			k = "B"
+			first = false
+		elseif pos > #msg then
+			k = "E"
+		else
+			k = "C"
+		end
+		Throttle(PROTO .. ":FG:" .. k .. ":" .. chunk, channel, target, "FG")
+	end
 end
 
 -- debounced sends: one pending timer per key, payload captured at queue time
@@ -462,14 +489,9 @@ function Comm.SendPlanApply(override)
 	Send("PS:" .. #owners)
 	for _, owner in ipairs(owners) do
 		BumpRev(owner)
-		local row = "PR:" .. SerializeRow(owner)
-		-- never silently drop part of a snapshot: an oversize single row is
-		-- logged and skipped, but the burst still completes cleanly
-		if #PROTO + 1 + #row > MAX_MSG then
-			HO.Log("comm", "PLANAPPLY row for " .. owner .. " exceeds size cap — skipped")
-		else
-			Send(row)
-		end
+		-- Send fragments oversize rows transparently, so a paladin with many
+		-- per-member overrides no longer loses part of the snapshot
+		Send("PR:" .. SerializeRow(owner))
 	end
 	SendTankChunks(tanks)
 	Send("PE:" .. #owners)
@@ -796,14 +818,78 @@ end
 local protoWarned = {}
 
 -- mutating message types require the sender to be a current group member; when
--- ungrouped there is no roster so all of these are rejected
+-- ungrouped there is no roster so all of these are rejected. FG only ever wraps
+-- row data, so it is mutating too (the reassembled inner type re-checks anyway).
 local MUTATING = {
 	SC = true, SP = true, F = true, T = true,
 	PS = true, PR = true, PT = true, PE = true,
 	NS = true, LR = true, LL = true, ST = true,
+	FG = true,
 }
 
-HO.RegisterEvent("CHAT_MSG_ADDON", function(prefix, message, _, senderFull)
+-- one dispatch path shared by the live event and by FG reassembly: the
+-- group-membership gate, trace logging and handler lookup, so a reassembled
+-- message passes exactly the gate a normal one would
+local function HandleMessage(sender, msgType, payload, channel)
+	if MUTATING[msgType] and not (sender and HO.Roster.byName[sender]) then
+		if HO.db and HO.db.options.trace then
+			HO.Log("rx", "rejected " .. msgType .. " from non-member " .. tostring(sender))
+		end
+		return
+	end
+	if HO.db and HO.db.options.trace and msgType ~= "LL" then
+		HO.Log("rx", sender .. " " .. msgType .. ":" .. tostring(payload):sub(1, 100))
+	end
+	local handler = handlers[msgType]
+	if handler then
+		local ok, err = pcall(handler, sender, payload, channel)
+		if not ok then
+			HO.Log("error", "comm " .. tostring(msgType) .. ": " .. tostring(err))
+		end
+	end
+end
+
+-- fragment reassembly, keyed by sender AND channel: one sender may interleave a
+-- fragmented RAID message with a fragmented WHISPER, so each channel gets its own
+-- buffer. B starts/restarts a buffer, C appends, E appends then dispatches the
+-- rebuilt inner message; orphaned C/E (no matching B) and runaway buffers drop.
+local FRAG_BUFFER_MAX = 10
+local fragBuffers = {} -- [sender] = { [channel] = { chunk, chunk, ... } }
+
+handlers["FG"] = function(sender, payload, channel)
+	local k, chunk = payload:match("^(%u):(.*)$")
+	if not k then
+		return
+	end
+	channel = channel or "?"
+	if k == "B" then
+		local perSender = fragBuffers[sender] or {}
+		fragBuffers[sender] = perSender
+		perSender[channel] = { chunk }
+		return
+	end
+	local perSender = fragBuffers[sender]
+	local buf = perSender and perSender[channel]
+	if not buf then
+		return -- C/E without a live B: discard
+	end
+	if #buf >= FRAG_BUFFER_MAX then
+		perSender[channel] = nil -- runaway: drop rather than grow without bound
+		HO.Log("comm", "fragment buffer overflow from " .. sender .. " — dropped")
+		return
+	end
+	buf[#buf + 1] = chunk
+	if k == "E" then
+		perSender[channel] = nil
+		local msg = table.concat(buf)
+		local innerType, innerPayload = msg:match("^(%u+):?(.*)$")
+		if innerType then
+			HandleMessage(sender, innerType, innerPayload, channel)
+		end
+	end
+end
+
+HO.RegisterEvent("CHAT_MSG_ADDON", function(prefix, message, channel, senderFull)
 	if prefix ~= PREFIX or not me then
 		return -- not ours, or before login init
 	end
@@ -829,34 +915,41 @@ HO.RegisterEvent("CHAT_MSG_ADDON", function(prefix, message, _, senderFull)
 	if sender == me and msgType ~= "PING" then
 		return -- own broadcasts echo back; PING is the deliberate loopback
 	end
-	-- gate every mutating type on current group membership; out-of-group
-	-- strangers must never reach a mutating handler
-	if MUTATING[msgType] and not (sender and HO.Roster.byName[sender]) then
-		if HO.db and HO.db.options.trace then
-			HO.Log("rx", "rejected " .. msgType .. " from non-member " .. tostring(sender))
-		end
-		return
-	end
-	if HO.db and HO.db.options.trace and msgType ~= "LL" then
-		HO.Log("rx", sender .. " " .. msgType .. ":" .. tostring(payload):sub(1, 100))
-	end
-	local handler = handlers[msgType]
-	if handler then
-		local ok, err = pcall(handler, sender, payload)
-		if not ok then
-			HO.Log("error", "comm " .. tostring(msgType) .. ": " .. tostring(err))
-		end
-	end
+	HandleMessage(sender, msgType, payload, channel)
 end)
 
 -- session wiring --------------------------------------------------------------
 
 local lastPallySig
 
+-- drop peer + fragment state for members who left the group: a leaver's stale
+-- openEdit/caps/greeted and any half-received fragments must not linger. Own
+-- entry is always kept; specSync is a deliberate session cache and left alone.
+local function PruneDeparted()
+	local grouped = IsInGroup()
+	local function departed(name)
+		if name == me then
+			return false
+		end
+		return (not grouped) or not HO.Roster.byName[name]
+	end
+	for name in pairs(Comm.peers) do
+		if departed(name) then
+			Comm.peers[name] = nil
+		end
+	end
+	for name in pairs(fragBuffers) do
+		if departed(name) then
+			fragBuffers[name] = nil
+		end
+	end
+end
+
 HO.RegisterEvent("PLAYER_LOGIN", function()
 	me = HO.FullName("player")
 	C_ChatInfo.RegisterAddonMessagePrefix(PREFIX)
 	HO.Roster.OnChanged(function()
+		PruneDeparted()
 		-- greet whenever the paladin composition changes; non-paladin
 		-- clients listen but never announce themselves as paladins
 		local sig = table.concat(HO.Roster.Paladins(), ";")
@@ -878,6 +971,8 @@ function Comm.Ping()
 	C_ChatInfo.SendAddonMessage(PREFIX, PROTO .. ":PING:", "WHISPER", me)
 end
 
+-- ask every paladin to re-broadcast their authoritative row; the R handler
+-- answers with a random-delayed whisper, so a burst of requests self-limits
 function Comm.RequestSync()
 	Send("R:")
 end

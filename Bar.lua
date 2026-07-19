@@ -108,8 +108,13 @@ local function CreateButton(index)
 			if task.singleSpellName and task.singleSpellName ~= task.spellName then
 				GameTooltip:AddLine("right: " .. task.singleSpellName .. " (single)", 1, 1, 1)
 			end
+		elseif task.missing > 0 then
+			GameTooltip:AddLine("all remaining targets are out of range", 1, 0.6, 0.3)
 		else
 			GameTooltip:AddLine((blessing and (blessing.name or blessing.key) or "?") .. " — all covered", 0.6, 1, 0.6)
+		end
+		if task.outOfRange and task.outOfRange > 0 then
+			GameTooltip:AddLine(task.outOfRange .. " out of range (skipped)", 1, 0.6, 0.3)
 		end
 		if task.missing > 0 then
 			GameTooltip:AddLine(task.missing .. " missing", 1, 0.4, 0.4)

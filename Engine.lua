@@ -110,6 +110,14 @@ local function Castable(entry)
 	return entry.online and not UnitIsDeadOrGhost(entry.unit) and UnitIsVisible(entry.unit)
 end
 
+local function InCastRange(blessing, unit)
+	local result = IsSpellInRange(blessing.name, unit)
+	if result == nil then
+		return true -- indeterminate: do not block the rotation
+	end
+	return result == 1
+end
+
 local function UseGreater(assign, eligiblePlayers)
 	local blessing = HO.Data.blessings[assign.id]
 	if not blessing or not blessing.greaterKnown then
@@ -163,11 +171,17 @@ function Engine.Update()
 		-- replaces this paladin's own singles on the whole class ("one
 		-- blessing per paladin"), so it must always happen first
 		local missingClass, missingSingles, expiring, minRemaining = {}, {}, {}, nil
+		local outOfRange = 0
 		for _, item in ipairs(pool) do
 			local has, remaining, duration = HasBlessing(item.entry.unit, item.blessingID)
 			item.remaining = remaining
+			local blessing = HO.Data.blessings[item.blessingID]
+			item.inRange = blessing and InCastRange(blessing, item.entry.unit)
 			if not has then
 				if Castable(item.entry) then
+					if not item.inRange then
+						outOfRange = outOfRange + 1
+					end
 					if item.isOverride or item.entry.isPet then
 						table.insert(missingSingles, item)
 					else
@@ -188,8 +202,18 @@ function Engine.Update()
 			return (a.remaining or 0) < (b.remaining or 0)
 		end)
 
+		-- unreachable members never block the rotation; for greater casts a
+		-- nearby anchor covers out-of-range class members anyway
+		local function FirstInRange(list)
+			for _, item in ipairs(list) do
+				if item.inRange then
+					return item
+				end
+			end
+		end
+
 		local missingCount = #missingClass + #missingSingles
-		local nextItem = missingClass[1] or missingSingles[1] or expiring[1]
+		local nextItem = FirstInRange(missingClass) or FirstInRange(missingSingles) or FirstInRange(expiring)
 		if nextItem then
 			local blessing = HO.Data.blessings[nextItem.blessingID]
 			-- greater only for class-wide targets of the class blessing; pets
@@ -206,11 +230,13 @@ function Engine.Update()
 				unitName = nextItem.entry.name,
 				missing = missingCount,
 				expiring = #expiring,
+				outOfRange = outOfRange,
 				minRemaining = minRemaining,
 				icon = blessing.icon,
 			}
 		else
-			-- nothing castable right now; passive display task
+			-- nothing castable right now (all covered, or the needy ones are
+			-- out of range); passive display task keeps the counts honest
 			local displayID = assign and assign.id or pool[1].blessingID
 			local blessing = HO.Data.blessings[displayID]
 			Engine.tasks[classToken] = {
@@ -219,8 +245,9 @@ function Engine.Update()
 				spellName = nil,
 				unit = nil,
 				unitName = nil,
-				missing = 0,
-				expiring = 0,
+				missing = missingCount,
+				expiring = #expiring,
+				outOfRange = outOfRange,
 				minRemaining = minRemaining,
 				icon = blessing and blessing.icon,
 			}

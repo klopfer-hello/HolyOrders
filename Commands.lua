@@ -130,8 +130,21 @@ HO.commands["plan"] = function(rest)
 		else
 			HO.Print("usage: /ho plan list, then /ho plan delete <number>")
 		end
+	elseif sub == "clear" then
+		local n = 0
+		for _ in pairs(HO.db.plans) do
+			n = n + 1
+		end
+		if arg == "yes" then
+			wipe(HO.db.plans)
+			wipe(storedList)
+			HO.db.activeSignature = nil
+			HO.Print("all " .. n .. " stored plan(s) deleted (the active plan is untouched)")
+		else
+			HO.Print("this deletes all " .. n .. " stored plan(s) — '/ho plan clear yes' to confirm")
+		end
 	else
-		HO.Print("usage: /ho plan show | save [label] | list | apply | delete <number>")
+		HO.Print("usage: /ho plan show | save [label] | list | apply | delete <number> | clear")
 	end
 end
 

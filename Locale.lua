@@ -17,7 +17,6 @@ end
 -- options
 L["HolyOrders — Options"] = "HolyOrders — Optionen"
 L["Show cast bar"] = "Buffleiste anzeigen"
-L["Lock cast bar position"] = "Position der Buffleiste sperren"
 L["Open edit: others may change my assignments"] = "Offene Bearbeitung: Andere dürfen meine Zuteilungen ändern"
 L["Prefer greater blessings even for single members"] = "Große Segen auch bei einzelnen Mitgliedern bevorzugen"
 L["Buff hunter pets"] = "Jäger-Begleiter segnen"
@@ -67,8 +66,7 @@ L["all remaining targets are out of range"] = "alle verbleibenden Ziele sind au�
 L["%d out of range (skipped)"] = "%d außer Reichweite (übersprungen)"
 L["%d missing"] = "%d fehlen"
 L["%d expiring soon"] = "%d laufen bald ab"
-L["locked — /ho bar unlock"] = "gesperrt — /ho bar unlock"
-L["drag to move — /ho bar lock"] = "Ziehen zum Verschieben — /ho bar lock"
+L["hold Ctrl and drag to move"] = "Strg halten und ziehen zum Bewegen"
 L["right-click: force rebuff (pre-pull refresh)"] = "Rechtsklick: Zwangs-Rebuff (vor dem Pull)"
 L["shift-right-click: assignment window"] = "Shift-Rechtsklick: Zuteilungsfenster"
 L["mouse wheel: change my assignment"] = "Mausrad: meine Zuteilung wechseln"

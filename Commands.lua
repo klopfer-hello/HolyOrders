@@ -313,13 +313,7 @@ HO.commands["bar"] = function(rest)
 	local opts = HO.db.options.bar or {}
 	HO.db.options.bar = opts
 	local sub = rest:lower()
-	if sub == "lock" then
-		opts.locked = true
-		HO.Print("bar locked")
-	elseif sub == "unlock" then
-		opts.locked = false
-		HO.Print("bar unlocked — drag it by the golden handle")
-	elseif sub == "show" then
+	if sub == "show" then
 		opts.hidden = false
 		HO.Bar.Refresh()
 		HO.Print("bar shown (appears when you have duties)")
@@ -344,7 +338,7 @@ HO.commands["bar"] = function(rest)
 			HO.Print("usage: /ho bar grow left|right|up|down")
 		end
 	else
-		HO.Print("usage: /ho bar lock|unlock|show|hide|reset|grow <dir>")
+		HO.Print("usage: /ho bar show|hide|reset|grow <dir>  (hold Ctrl and drag the handle to move)")
 	end
 end
 

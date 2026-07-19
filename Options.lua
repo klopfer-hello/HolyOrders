@@ -67,7 +67,6 @@ end
 
 ITEMS = {
 	{ label = L["Show cast bar"], get = function(o) return not o.bar.hidden end, set = function(o, v) o.bar.hidden = not v; HO.Bar.Refresh() end },
-	{ label = L["Lock cast bar position"], get = function(o) return o.bar.locked end, set = function(o, v) o.bar.locked = v end },
 	{ label = L["Keep cast bar above other windows"], get = function(o) return o.bar.front == true end, set = function(o, v) o.bar.front = v; if HO.Bar and HO.Bar.ApplyStrata then HO.Bar.ApplyStrata() end end },
 	{ label = L["Open edit: others may change my assignments"], get = function(o) return o.openEdit end, set = function(o, v) o.openEdit = v; HO.Comm.SendHello() end },
 	{ label = L["Prefer greater blessings even for single members"], get = function(o) return o.greaterMin == 1 end, set = function(o, v) o.greaterMin = v and 1 or 2; RefreshAll() end },

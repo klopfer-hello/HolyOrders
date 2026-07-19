@@ -10,7 +10,8 @@ local L = HO.L
 
 local BUTTON_SIZE = 34
 local GAP = 5
-local HANDLE_WIDTH = 16 -- slim rail + gem knob ("compact gem node")
+local HANDLE_WIDTH = 22 -- gem-node thickness (along the bar)
+local HANDLE_ACROSS = 44 -- gem-node length (across the bar); 2:1 keeps the gem round
 local MAX_BUTTONS = 9
 
 -- handle "gem node" sprite: a golden rail with a faceted gem knob. The gem
@@ -18,6 +19,10 @@ local MAX_BUTTONS = 9
 -- rebuff is active. Bundled TGA, referenced without extension.
 local HANDLE_TEX = "Interface\\AddOns\\HolyOrders\\Icons\\GemHandle"
 local HANDLE_TEX_ACTIVE = "Interface\\AddOns\\HolyOrders\\Icons\\GemHandleActive"
+
+-- rounded-button textures: a tintable frame ring and a corner mask (bundled TGA)
+local BTN_MASK = "Interface\\AddOns\\HolyOrders\\Icons\\ButtonMask"
+local BTN_FRAME = "Interface\\AddOns\\HolyOrders\\Icons\\ButtonFrame"
 local UPDATE_INTERVAL = 1.0
 local NONE_ICON = "Interface\\Buttons\\UI-GroupLoot-Pass-Up" -- "no aura" placeholder (matches the window)
 -- colour language for status borders: green = everyone has their assigned buff,
@@ -44,10 +49,10 @@ local function LayoutBar()
 	local length = HANDLE_WIDTH + GAP + (MAX_BUTTONS + 1) * (BUTTON_SIZE + GAP)
 	if horizontal then
 		bar:SetSize(length, BUTTON_SIZE + 4)
-		handle:SetSize(HANDLE_WIDTH, BUTTON_SIZE)
+		handle:SetSize(HANDLE_WIDTH, HANDLE_ACROSS)
 	else
 		bar:SetSize(BUTTON_SIZE + 4, length)
-		handle:SetSize(BUTTON_SIZE, HANDLE_WIDTH)
+		handle:SetSize(HANDLE_ACROSS, HANDLE_WIDTH)
 	end
 	handle:ClearAllPoints()
 	if grow == "right" then
@@ -87,15 +92,6 @@ local function LayoutBar()
 	for i, btn in ipairs(buttons) do
 		local offset = HANDLE_WIDTH + GAP + i * (BUTTON_SIZE + GAP)
 		PlaceAtOffset(btn, offset)
-		-- in vertical growth the buttons stack with only GAP between them, so
-		-- a timer under the icon overlaps the neighbour; put it to the side
-		-- (clear of the handle, which sits at the top/bottom origin)
-		btn.timer:ClearAllPoints()
-		if horizontal then
-			btn.timer:SetPoint("TOP", btn, "BOTTOM", 0, -1)
-		else
-			btn.timer:SetPoint("LEFT", btn, "RIGHT", 1, 0)
-		end
 	end
 	lastGrow = grow
 end
@@ -163,16 +159,13 @@ end
 -- colour the button's status border (nil = hide it): green all covered, red
 -- someone in range missing, amber only-expiring or only-out-of-range
 local function SetButtonBorder(btn, r, g, b)
-	if not btn.borders then
+	if not btn.frame then
 		return
 	end
-	for _, tex in pairs(btn.borders) do
-		if r then
-			tex:SetColorTexture(r, g, b, 0.9)
-			tex:Show()
-		else
-			tex:Hide()
-		end
+	if r then
+		btn.frame:SetVertexColor(r, g, b, 1)
+	else
+		btn.frame:SetVertexColor(0.5, 0.42, 0.22, 0.85) -- neutral gold frame, no status
 	end
 end
 
@@ -646,12 +639,14 @@ local function CreateButton(index)
 
 	btn.bg = btn:CreateTexture(nil, "BACKGROUND")
 	btn.bg:SetAllPoints()
-	btn.bg:SetColorTexture(0, 0, 0, 0.65)
+	btn.bg:SetTexture("Interface\\Buttons\\WHITE8x8")
+	btn.bg:SetVertexColor(0, 0, 0, 0.65)
+	btn.bg:SetMask(BTN_MASK) -- rounded backdrop
 
 	btn.icon = btn:CreateTexture(nil, "ARTWORK")
 	btn.icon:SetPoint("TOPLEFT", 2, -2)
 	btn.icon:SetPoint("BOTTOMRIGHT", -2, 2)
-	btn.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+	btn.icon:SetMask(BTN_MASK) -- rounded icon corners
 
 	btn.classIcon = btn:CreateTexture(nil, "OVERLAY")
 	-- draw above the status border (both are OVERLAY) so the corner class icon
@@ -661,33 +656,24 @@ local function CreateButton(index)
 	btn.classIcon:SetPoint("TOPLEFT", -5, 5)
 	btn.classIcon:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
 
-	-- status border: green = everyone covered, red = someone missing, amber =
-	-- expiring/out of range. Four thin edges, recoloured per refresh (texture
-	-- ops only, so it is safe to update in combat)
-	btn.borders = {}
-	local bt = btn:CreateTexture(nil, "OVERLAY")
-	bt:SetPoint("TOPLEFT", -1, 1)
-	bt:SetPoint("TOPRIGHT", 1, 1)
-	bt:SetHeight(2)
-	local bb = btn:CreateTexture(nil, "OVERLAY")
-	bb:SetPoint("BOTTOMLEFT", -1, -1)
-	bb:SetPoint("BOTTOMRIGHT", 1, -1)
-	bb:SetHeight(2)
-	local bl = btn:CreateTexture(nil, "OVERLAY")
-	bl:SetPoint("TOPLEFT", -1, 1)
-	bl:SetPoint("BOTTOMLEFT", -1, -1)
-	bl:SetWidth(2)
-	local br = btn:CreateTexture(nil, "OVERLAY")
-	br:SetPoint("TOPRIGHT", 1, 1)
-	br:SetPoint("BOTTOMRIGHT", 1, -1)
-	br:SetWidth(2)
-	btn.borders.top, btn.borders.bottom, btn.borders.left, btn.borders.right = bt, bb, bl, br
+	-- rounded status frame (tintable): green = everyone covered, red = someone
+	-- missing, amber = expiring/out of range, yellow = a member requested a buff.
+	-- Recoloured in UpdateButtonTexts — a plain vertex recolour, safe in combat.
+	btn.frame = btn:CreateTexture(nil, "OVERLAY", nil, 1)
+	btn.frame:SetPoint("TOPLEFT", -1, 1)
+	btn.frame:SetPoint("BOTTOMRIGHT", 1, -1)
+	btn.frame:SetTexture(BTN_FRAME)
 
 	btn.count = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 	btn.count:SetPoint("BOTTOMRIGHT", -1, 1)
+	btn.count:SetDrawLayer("OVERLAY", 3) -- above the status frame ring
 
-	btn.timer = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-	btn.timer:SetPoint("TOP", btn, "BOTTOM", 0, -1)
+	-- timer overlaid on the icon (centered), larger and outlined for readability
+	btn.timer = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	btn.timer:SetPoint("CENTER", btn, "CENTER", 0, 0)
+	btn.timer:SetDrawLayer("OVERLAY", 4) -- above icon, frame and class badge
+	local tf, ts = btn.timer:GetFont()
+	btn.timer:SetFont(tf, (ts or 14) + 3, "THICKOUTLINE")
 
 	btn:SetScript("OnEnter", function(self)
 		local task = self.task
@@ -786,16 +772,26 @@ local function CreateAuraButton()
 
 	btn.bg = btn:CreateTexture(nil, "BACKGROUND")
 	btn.bg:SetAllPoints()
-	btn.bg:SetColorTexture(0.10, 0.10, 0.32, 0.80) -- blue tint distinguishes it from duty buttons
+	btn.bg:SetTexture("Interface\\Buttons\\WHITE8x8")
+	btn.bg:SetVertexColor(0.10, 0.10, 0.32, 0.85) -- blue tint distinguishes it from duty buttons
+	btn.bg:SetMask(BTN_MASK)
 
 	btn.icon = btn:CreateTexture(nil, "ARTWORK")
 	btn.icon:SetPoint("TOPLEFT", 2, -2)
 	btn.icon:SetPoint("BOTTOMRIGHT", -2, 2)
-	btn.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+	btn.icon:SetMask(BTN_MASK)
+
+	-- blue rounded frame to match the aura's blue theme
+	btn.frame = btn:CreateTexture(nil, "OVERLAY", nil, 1)
+	btn.frame:SetPoint("TOPLEFT", -1, 1)
+	btn.frame:SetPoint("BOTTOMRIGHT", 1, -1)
+	btn.frame:SetTexture(BTN_FRAME)
+	btn.frame:SetVertexColor(0.35, 0.55, 1.0, 1)
 
 	btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	btn.label:SetPoint("BOTTOM", btn, "BOTTOM", 0, 1)
 	btn.label:SetText(L["Aura"])
+	btn.label:SetDrawLayer("OVERLAY", 3) -- above the frame ring
 
 	btn:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -872,7 +868,7 @@ function Bar.Create()
 
 	handle = CreateFrame("Frame", nil, bar)
 	handle:SetPoint("TOPLEFT", 0, 0)
-	handle:SetSize(HANDLE_WIDTH, BUTTON_SIZE)
+	handle:SetSize(HANDLE_WIDTH, HANDLE_ACROSS)
 	handle:EnableMouse(true)
 	handle:RegisterForDrag("LeftButton")
 	-- the bundled gem-node sprite (golden rail + faceted gem) fills the handle;
@@ -885,7 +881,8 @@ function Bar.Create()
 		if InCombatLockdown() then
 			return -- moving the protected bar in combat would taint it
 		end
-		if not BarOptions().locked then
+		-- hold Ctrl to move; prevents accidental drags without a lock toggle
+		if IsControlKeyDown() then
 			bar:StartMoving()
 		end
 	end)
@@ -908,7 +905,7 @@ function Bar.Create()
 	handle:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
 		GameTooltip:SetText("HolyOrders")
-		GameTooltip:AddLine(BarOptions().locked and L["locked — /ho bar unlock"] or L["drag to move — /ho bar lock"], 1, 1, 1)
+		GameTooltip:AddLine(L["hold Ctrl and drag to move"], 1, 1, 1)
 		GameTooltip:AddLine(L["right-click: force rebuff (pre-pull refresh)"], 1, 1, 1)
 		GameTooltip:AddLine(L["shift-right-click: assignment window"], 1, 1, 1)
 		GameTooltip:Show()

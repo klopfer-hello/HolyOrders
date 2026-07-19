@@ -166,13 +166,13 @@ end
 local flyout
 local flyoutRows = {}
 local flyoutClass -- classToken currently displayed, nil when closed
-local FLYOUT_ROW_H = 20
+local FLYOUT_ROW_H = 30
 local FLYOUT_HEADER = 20
-local FLYOUT_FOOTER = 16
+local FLYOUT_FOOTER = 5 -- bottom padding only (no hint line)
 local FLYOUT_PAD = 6
-local FLYOUT_WIDTH = 178
+local FLYOUT_WIDTH = 190
 local FLYOUT_BORDER = 2
-local FLYOUT_ICON = FLYOUT_ROW_H - 4
+local FLYOUT_ICON = FLYOUT_ROW_H - 6
 
 local function FindButtonForClass(classToken)
 	for i = 1, MAX_BUTTONS do
@@ -353,11 +353,6 @@ local function CreateFlyout()
 	flyout.title:SetPoint("TOPLEFT", FLYOUT_PAD, -4)
 	flyout.title:SetPoint("TOPRIGHT", -FLYOUT_PAD, -4)
 	flyout.title:SetJustifyH("LEFT")
-	flyout.hint = flyout:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-	flyout.hint:SetPoint("BOTTOMLEFT", FLYOUT_PAD, 4)
-	flyout.hint:SetPoint("BOTTOMRIGHT", -FLYOUT_PAD, 4)
-	flyout.hint:SetJustifyH("LEFT")
-	flyout.hint:SetText(L["wheel: change blessing — right-click: clear"])
 	flyout:Hide()
 end
 
@@ -382,7 +377,9 @@ local function FlyoutRefresh()
 		return
 	end
 	flyout:ClearAllPoints()
-	flyout:SetPoint("TOP", anchor, "BOTTOM", 0, -3)
+	-- fly out to the LEFT of the class button (top-aligned), like the classic
+	-- paladin buff addons; SetClampedToScreen keeps it on-screen near an edge
+	flyout:SetPoint("TOPRIGHT", anchor, "TOPLEFT", -4, 0)
 	flyout.title:SetText(flyoutClass)
 
 	local members = HO.Engine.ClassMembers(flyoutClass)

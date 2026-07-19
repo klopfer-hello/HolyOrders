@@ -7,6 +7,7 @@
 local HO = HolyOrders
 local Window = {}
 HO.Window = Window
+local L = HO.L
 
 local NAME_W = 175
 local COL_W = 34
@@ -34,10 +35,11 @@ end
 
 -- next assignable blessing for a class cell (0 = none); eligibility filtered,
 -- availability best-effort (exact for the player, permissive for remotes)
-local function CycleClassBlessing(pally, classToken, current)
+local function CycleClassBlessing(pally, classToken, current, delta)
+	delta = delta or 1
 	local id = current or 0
 	for _ = 1, HO.Data.NUM_BLESSINGS + 1 do
-		id = (id + 1) % (HO.Data.NUM_BLESSINGS + 1)
+		id = (id + delta) % (HO.Data.NUM_BLESSINGS + 1)
 		if id == 0 then
 			return 0
 		end
@@ -46,6 +48,20 @@ local function CycleClassBlessing(pally, classToken, current)
 		end
 	end
 	return 0
+end
+
+-- wheel-cycling from the cast bar: edits the player's own row, which syncs
+-- to the group and refreshes the window like any other edit
+function Window.CycleMyClass(classToken, delta)
+	local me = HO.FullName("player")
+	if not me then
+		return
+	end
+	local plan = HO.Plan.Active()
+	local cur = plan.class[me] and plan.class[me][classToken]
+	local nextID = CycleClassBlessing(me, classToken, cur and cur.id or 0, delta)
+	HO.Plan.SetClassAssignment(me, classToken, nextID, cur and cur.mode or nil)
+	RefreshAll()
 end
 
 -- overrides may force anything castable (eligibility intentionally bypassed)
@@ -119,8 +135,8 @@ local function CellTooltip(cell)
 		GameTooltip:SetText(cell.memberName)
 		local plan = HO.Plan.Active()
 		local cur = plan.player[cell.pally] and plan.player[cell.pally][cell.memberName]
-		GameTooltip:AddLine("override by " .. cell.pally .. ": " .. (cur and BlessingName(cur) or "none"), 1, 1, 1)
-		GameTooltip:AddLine("click: next blessing — right-click: clear", 0.8, 0.8, 0.8)
+		GameTooltip:AddLine(string.format(L["override by %s: %s"], cell.pally, cur and BlessingName(cur) or L["none"]), 1, 1, 1)
+		GameTooltip:AddLine(L["click: next blessing — right-click: clear"], 0.8, 0.8, 0.8)
 	else
 		GameTooltip:SetText(cell.classToken)
 		local plan = HO.Plan.Active()
@@ -128,22 +144,23 @@ local function CellTooltip(cell)
 		if cur then
 			GameTooltip:AddLine(cell.pally .. ": " .. BlessingName(cur.id), 1, 1, 1)
 			local n = cell.memberCount or 0
+			local min = HO.db.options.greaterMin or 2
 			if cur.mode == "auto" then
-				local effective = (n >= 2)
-					and "greater (30 min, whole class, 1 Symbol of Kings)"
-					or "10-min singles (too few members for greater)"
-				GameTooltip:AddLine("mode: auto — greater from 2+ members, singles otherwise", 0.9, 0.9, 0.9, true)
-				GameTooltip:AddLine("with " .. n .. " member" .. (n == 1 and "" or "s") .. " now: " .. effective, 0.6, 1, 0.6, true)
+				local effective = (n >= min)
+					and L["greater (30 min, whole class, 1 Symbol of Kings)"]
+					or L["10-min singles (too few members for greater)"]
+				GameTooltip:AddLine(string.format(L["mode: auto — greater from %d+ members, singles otherwise"], min), 0.9, 0.9, 0.9, true)
+				GameTooltip:AddLine(string.format(L["with %d member(s) now: %s"], n, effective), 0.6, 1, 0.6, true)
 			elseif cur.mode == "greater" then
-				GameTooltip:AddLine("mode: greater — always the Greater Blessing: 30 min, hits the whole class, costs a Symbol of Kings per cast", 0.9, 0.9, 0.9, true)
+				GameTooltip:AddLine(L["mode: greater — always the Greater Blessing: 30 min, hits the whole class, costs a Symbol of Kings per cast"], 0.9, 0.9, 0.9, true)
 			else
-				GameTooltip:AddLine("mode: normal — always 10-min single blessings on each member, no reagent", 0.9, 0.9, 0.9, true)
+				GameTooltip:AddLine(L["mode: normal — always 10-min single blessings on each member, no reagent"], 0.9, 0.9, 0.9, true)
 			end
 		else
-			GameTooltip:AddLine(cell.pally .. ": no assignment", 1, 1, 1)
+			GameTooltip:AddLine(cell.pally .. ": " .. L["no assignment"], 1, 1, 1)
 		end
-		GameTooltip:AddLine("click: next blessing — right-click: clear", 0.8, 0.8, 0.8)
-		GameTooltip:AddLine("shift-click: change the cast mode", 0.8, 0.8, 0.8)
+		GameTooltip:AddLine(L["click: next blessing — right-click: clear"], 0.8, 0.8, 0.8)
+		GameTooltip:AddLine(L["shift-click: change the cast mode"], 0.8, 0.8, 0.8)
 	end
 	GameTooltip:Show()
 end
@@ -227,7 +244,7 @@ function Window.Create()
 	win.header.bg:SetColorTexture(0.94, 0.78, 0.09, 0.18)
 	win.header.title = win.header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	win.header.title:SetPoint("LEFT", 10, 0)
-	win.header.title:SetText("HolyOrders — Assignments")
+	win.header.title:SetText(L["HolyOrders — Assignments"])
 
 	-- parent the close button to the window, not the header: the template's
 	-- default OnClick hides its PARENT, which used to hide only the title bar
@@ -257,24 +274,22 @@ function Window.Create()
 		local ok, msg = HO.Planner.Run()
 		HO.Print(ok and ("auto-plan: " .. msg) or ("auto-plan failed: " .. msg))
 		RefreshAll()
-	end, "Run the deterministic auto-planner")
+	end, L["Run the deterministic auto-planner"])
 	HeaderButton("Rebuff", -94, function()
 		HO.Bar.ToggleForceRebuff()
-	end, "Force rebuff: refresh everything before the pull")
-	HeaderButton("Save", -158, function()
+	end, L["Force rebuff: refresh everything before the pull"])
+	HeaderButton(L["Save"], -158, function()
 		local sig = HO.Plan.Save()
 		HO.Print(sig and ("plan saved for roster: " .. sig) or "cannot save: no paladins in roster")
-	end, "Save the current plan for this paladin roster")
+	end, L["Save the current plan for this paladin roster"])
 	win.salvBtn = HeaderButton("No Salv", -222, function()
 		HO.commands["nosalv"]("")
-	end, "Encounter toggle: swap Salvation for substitutes, click again to restore the previous plan (lead/assist)")
+	end, L["Encounter toggle: swap Salvation for substitutes, click again to restore the previous plan (lead/assist)"])
 
 	win.colHeader = {}
 	win.hint = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	win.hint:SetPoint("BOTTOMLEFT", 10, 6)
 	win.hint:SetJustifyH("LEFT")
-	win.hint:SetText("click: blessing — right-click: clear — shift-click: mode — click class: members\n"
-		.. "mode: |cff9d9d9da|r auto (greater from 2+ members) — |cffffd100G|r always greater (symbol) — |cffffffffn|r always 10-min singles")
 end
 
 -- layout ----------------------------------------------------------------------
@@ -291,6 +306,8 @@ function Window.Refresh()
 		local active = HO.Plan.NoSalvationActive() or HO.db.noSalvBy
 		win.salvBtn:SetText(active and "|cffff4040Salv OFF|r" or "No Salv")
 	end
+	win.hint:SetText(L["click: blessing — right-click: clear — shift-click: mode — click class: members"] .. "\n"
+		.. string.format(L["mode: |cff9d9d9da|r auto (greater from %d+ members) — |cffffd100G|r always greater (symbol) — |cffffffffn|r always 10-min singles"], HO.db.options.greaterMin or 2))
 
 	-- column headers (paladin short names, vertical position under header)
 	for c = 1, numCols do
@@ -393,14 +410,14 @@ function Window.Refresh()
 					local short = entry.name:match("^([^%-]+)") or entry.name
 					if entry.isPet then
 						local ownerShort = entry.owner and (entry.owner:match("^([^%-]+)") or entry.owner) or "?"
-						mrow.label.text:SetText(short .. " |cff9d9d9d(pet of " .. ownerShort .. ")|r")
+						mrow.label.text:SetText(short .. " |cff9d9d9d" .. string.format(L["(pet of %s)"], ownerShort) .. "|r")
 						mrow.label:SetScript("OnClick", nil)
 					else
 						local isTank = HO.Plan.IsTank(entry.name, entry.tankRole)
 						local spec = HO.db.specCache[entry.name]
 						mrow.label.text:SetText(short
 							.. (spec and (" |cff9d9d9d(" .. spec .. ")|r") or "")
-							.. (isTank and " |cffff6060[tank]|r" or ""))
+							.. (isTank and (" |cffff6060" .. L["[tank]"] .. "|r") or ""))
 						mrow.label:SetScript("OnClick", function(_, mouseBtn)
 							if mouseBtn == "RightButton" then
 								local flagged = HO.Plan.ToggleTank(entry.name)

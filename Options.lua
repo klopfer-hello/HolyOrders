@@ -3,6 +3,7 @@
 local HO = HolyOrders
 local Options = {}
 HO.Options = Options
+local L = HO.L
 
 local PET_CYCLE = { 2, 1, 3 } -- Might > Wisdom > Kings
 local GROW_CYCLE = { "right", "left", "down", "up" }
@@ -28,19 +29,19 @@ local function Refresh()
 		checks[i]:SetChecked(item.get(o) and true or false)
 	end
 	local blessing = HO.Data.blessings[o.pets.blessing or 2]
-	frame.petBtn:SetText("Pet blessing: " .. (blessing and (blessing.name or blessing.key) or "?"))
-	frame.growBtn:SetText("Bar grows: " .. (o.bar.grow or "right"))
+	frame.petBtn:SetText(string.format(L["Pet blessing: %s"], blessing and (blessing.name or blessing.key) or "?"))
+	frame.growBtn:SetText(string.format(L["Bar grows: %s"], o.bar.grow or "right"))
 end
 
 ITEMS = {
-	{ label = "Show cast bar", get = function(o) return not o.bar.hidden end, set = function(o, v) o.bar.hidden = not v; HO.Bar.Refresh() end },
-	{ label = "Lock cast bar position", get = function(o) return o.bar.locked end, set = function(o, v) o.bar.locked = v end },
-	{ label = "Open edit: others may change my assignments", get = function(o) return o.openEdit end, set = function(o, v) o.openEdit = v; HO.Comm.SendHello() end },
-	{ label = "Prefer greater blessings even for single members", get = function(o) return o.greaterMin == 1 end, set = function(o, v) o.greaterMin = v and 1 or 2; HO.Bar.Refresh() end },
-	{ label = "Buff hunter pets", get = function(o) return o.pets.hunter ~= false end, set = function(o, v) o.pets.hunter = v; HO.Bar.Refresh() end },
-	{ label = "Buff warlock pets", get = function(o) return o.pets.warlock == true end, set = function(o, v) o.pets.warlock = v; HO.Bar.Refresh() end },
-	{ label = "Show minimap button", get = function(o) return not o.minimap.hide end, set = function(o, v) o.minimap.hide = not v; HO.MinimapButton.UpdateShown() end },
-	{ label = "Log sync messages (debug)", get = function(o) return o.trace end, set = function(o, v) o.trace = v end },
+	{ label = L["Show cast bar"], get = function(o) return not o.bar.hidden end, set = function(o, v) o.bar.hidden = not v; HO.Bar.Refresh() end },
+	{ label = L["Lock cast bar position"], get = function(o) return o.bar.locked end, set = function(o, v) o.bar.locked = v end },
+	{ label = L["Open edit: others may change my assignments"], get = function(o) return o.openEdit end, set = function(o, v) o.openEdit = v; HO.Comm.SendHello() end },
+	{ label = L["Prefer greater blessings even for single members"], get = function(o) return o.greaterMin == 1 end, set = function(o, v) o.greaterMin = v and 1 or 2; HO.Bar.Refresh() end },
+	{ label = L["Buff hunter pets"], get = function(o) return o.pets.hunter ~= false end, set = function(o, v) o.pets.hunter = v; HO.Bar.Refresh() end },
+	{ label = L["Buff warlock pets"], get = function(o) return o.pets.warlock == true end, set = function(o, v) o.pets.warlock = v; HO.Bar.Refresh() end },
+	{ label = L["Show minimap button"], get = function(o) return not o.minimap.hide end, set = function(o, v) o.minimap.hide = not v; HO.MinimapButton.UpdateShown() end },
+	{ label = L["Log sync messages (debug)"], get = function(o) return o.trace end, set = function(o, v) o.trace = v end },
 }
 
 function Options.Create()
@@ -74,7 +75,7 @@ function Options.Create()
 	header.bg:SetColorTexture(0.94, 0.78, 0.09, 0.18)
 	header.title = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	header.title:SetPoint("LEFT", 10, 0)
-	header.title:SetText("HolyOrders — Options")
+	header.title:SetText(L["HolyOrders — Options"])
 
 	local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
 	close:SetPoint("TOPRIGHT", 2, 2)

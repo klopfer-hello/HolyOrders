@@ -3,6 +3,7 @@
 local HO = HolyOrders
 local MMB = {}
 HO.MinimapButton = MMB
+local L = HO.L
 
 local RADIUS = 80
 local btn
@@ -74,10 +75,10 @@ function MMB.Create()
 	btn:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
 		GameTooltip:SetText("HolyOrders")
-		GameTooltip:AddLine("click: assignment window", 1, 1, 1)
-		GameTooltip:AddLine("right-click: force rebuff", 1, 1, 1)
-		GameTooltip:AddLine("shift-click: options", 1, 1, 1)
-		GameTooltip:AddLine("drag: move this button", 0.8, 0.8, 0.8)
+		GameTooltip:AddLine(L["click: assignment window"], 1, 1, 1)
+		GameTooltip:AddLine(L["right-click: force rebuff"], 1, 1, 1)
+		GameTooltip:AddLine(L["shift-click: options"], 1, 1, 1)
+		GameTooltip:AddLine(L["drag: move this button"], 0.8, 0.8, 0.8)
 		GameTooltip:Show()
 	end)
 	btn:SetScript("OnLeave", function()

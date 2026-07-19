@@ -6,6 +6,9 @@
 local HO = HolyOrders
 local Plan = {}
 HO.Plan = Plan
+local function L(key)
+	return (HO.L or {})[key] or key
+end
 
 Plan.MAX_STORED = 20 -- unnamed plans beyond this are pruned (oldest first)
 Plan.SUGGEST_THRESHOLD = 0.5 -- min paladin-set overlap for a suggestion
@@ -259,10 +262,10 @@ local function OnRosterChanged()
 		stored.meta.lastUsed = time()
 		Plan.suggestion = nil
 		HO.Log("plan", "auto-applied stored plan for " .. sig)
-		HO.Print("stored plan applied for this paladin roster" .. (stored.meta.name and (" ('" .. stored.meta.name .. "')") or ""))
+		HO.Print(L("stored plan applied for this paladin roster") .. (stored.meta.name and (" ('" .. stored.meta.name .. "')") or ""))
 		-- a lead broadcasts the restored plan so the raid converges on it
 		if HO.Comm and HO.Comm.SendPlanApply() then
-			HO.Print("plan broadcast to the group")
+			HO.Print(L("plan broadcast to the group"))
 		end
 		return
 	end
@@ -298,7 +301,7 @@ function Plan.ApplySuggestion()
 	stored.meta.lastUsed = time()
 	Plan.suggestion = nil
 	if HO.Comm and HO.Comm.SendPlanApply() then
-		HO.Print("plan broadcast to the group")
+		HO.Print(L("plan broadcast to the group"))
 	end
 	return true
 end

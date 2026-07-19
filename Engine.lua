@@ -279,7 +279,7 @@ function Engine.Update()
 		if not pending then
 			Engine.forceUntil = nil
 			HO.Log("engine", "force rebuff complete")
-			HO.Print("force rebuff complete — all assigned buffs are fresh")
+			HO.Print(HO.L["force rebuff complete — all assigned buffs are fresh"])
 		end
 	end
 end

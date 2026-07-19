@@ -6,6 +6,7 @@
 local HO = HolyOrders
 local Bar = {}
 HO.Bar = Bar
+local L = HO.L
 
 local BUTTON_SIZE = 34
 local GAP = 5
@@ -114,6 +115,17 @@ local function CreateButton(index)
 	-- left: the planned cast (greater when planned); right: always a single
 	btn:SetAttribute("type1", "spell")
 	btn:SetAttribute("type2", "spell")
+	-- wheel: cycle my class assignment (out of combat; syncs + updates window)
+	btn:EnableMouseWheel(true)
+	btn:SetScript("OnMouseWheel", function(self, delta)
+		if InCombatLockdown() then
+			return
+		end
+		local task = self.task
+		if task then
+			HO.Window.CycleMyClass(task.classToken, delta > 0 and 1 or -1)
+		end
+	end)
 
 	btn.bg = btn:CreateTexture(nil, "BACKGROUND")
 	btn.bg:SetAllPoints()
@@ -144,24 +156,25 @@ local function CreateButton(index)
 		local blessing = HO.Data.blessings[task.blessingID]
 		GameTooltip:SetText(task.classToken)
 		if task.spellName and task.unitName then
-			GameTooltip:AddLine("left: " .. task.spellName .. " on " .. task.unitName, 1, 1, 1)
+			GameTooltip:AddLine(string.format(L["left: %s on %s"], task.spellName, task.unitName), 1, 1, 1)
 			if task.singleSpellName and task.singleSpellName ~= task.spellName then
-				GameTooltip:AddLine("right: " .. task.singleSpellName .. " (single)", 1, 1, 1)
+				GameTooltip:AddLine(string.format(L["right: %s (single)"], task.singleSpellName), 1, 1, 1)
 			end
 		elseif task.missing > 0 then
-			GameTooltip:AddLine("all remaining targets are out of range", 1, 0.6, 0.3)
+			GameTooltip:AddLine(L["all remaining targets are out of range"], 1, 0.6, 0.3)
 		else
-			GameTooltip:AddLine((blessing and (blessing.name or blessing.key) or "?") .. " — all covered", 0.6, 1, 0.6)
+			GameTooltip:AddLine(string.format(L["%s — all covered"], blessing and (blessing.name or blessing.key) or "?"), 0.6, 1, 0.6)
 		end
 		if task.outOfRange and task.outOfRange > 0 then
-			GameTooltip:AddLine(task.outOfRange .. " out of range (skipped)", 1, 0.6, 0.3)
+			GameTooltip:AddLine(string.format(L["%d out of range (skipped)"], task.outOfRange), 1, 0.6, 0.3)
 		end
 		if task.missing > 0 then
-			GameTooltip:AddLine(task.missing .. " missing", 1, 0.4, 0.4)
+			GameTooltip:AddLine(string.format(L["%d missing"], task.missing), 1, 0.4, 0.4)
 		end
 		if task.expiring > 0 then
-			GameTooltip:AddLine(task.expiring .. " expiring soon", 1, 0.85, 0.3)
+			GameTooltip:AddLine(string.format(L["%d expiring soon"], task.expiring), 1, 0.85, 0.3)
 		end
+		GameTooltip:AddLine(L["mouse wheel: change my assignment"], 0.8, 0.8, 0.8)
 		GameTooltip:Show()
 	end)
 	btn:SetScript("OnLeave", function()
@@ -208,9 +221,9 @@ function Bar.Create()
 	handle:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
 		GameTooltip:SetText("HolyOrders")
-		GameTooltip:AddLine(BarOptions().locked and "locked — /ho bar unlock" or "drag to move — /ho bar lock", 1, 1, 1)
-		GameTooltip:AddLine("right-click: force rebuff (pre-pull refresh)", 1, 1, 1)
-		GameTooltip:AddLine("shift-right-click: assignment window", 1, 1, 1)
+		GameTooltip:AddLine(BarOptions().locked and L["locked — /ho bar unlock"] or L["drag to move — /ho bar lock"], 1, 1, 1)
+		GameTooltip:AddLine(L["right-click: force rebuff (pre-pull refresh)"], 1, 1, 1)
+		GameTooltip:AddLine(L["shift-right-click: assignment window"], 1, 1, 1)
 		GameTooltip:Show()
 	end)
 	handle:SetScript("OnLeave", function()
@@ -230,10 +243,10 @@ end
 function Bar.ToggleForceRebuff()
 	if HO.Engine.ForceActive() then
 		HO.Engine.StopForceRebuff()
-		HO.Print("force rebuff cancelled")
+		HO.Print(L["force rebuff cancelled"])
 	else
 		HO.Engine.StartForceRebuff()
-		HO.Print("force rebuff: refreshing everything older than 2 minutes (ends when all fresh)")
+		HO.Print(L["force rebuff: refreshing everything older than 2 minutes (ends when all fresh)"])
 	end
 	Bar.Refresh()
 end

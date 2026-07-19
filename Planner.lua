@@ -399,7 +399,7 @@ function Planner.Run()
 	if HO.Comm then
 		HO.Comm.suspended = false
 		if HO.Comm.SendPlanApply() then
-			HO.Print("plan broadcast to the group")
+			HO.Print(HO.L["plan broadcast to the group"])
 		end
 	end
 	return true, summary

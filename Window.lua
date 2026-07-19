@@ -440,6 +440,28 @@ function Window.ApplyScale()
 	end
 end
 
+-- the window position persists in SavedVariables so it opens where the user left
+-- it, not always re-centered. The client re-anchors a dragged frame to the
+-- nearest corner, so the full anchor is saved (point + relPoint + offsets).
+local function SaveWindowPos()
+	if not win then
+		return
+	end
+	local point, _, relPoint, x, y = win:GetPoint()
+	HO.db.options.window = HO.db.options.window or {}
+	HO.db.options.window.pos = { point = point, relPoint = relPoint, x = x, y = y }
+end
+
+local function RestoreWindowPos()
+	local pos = HO.db.options.window and HO.db.options.window.pos
+	win:ClearAllPoints()
+	if pos and pos.point then
+		win:SetPoint(pos.point, UIParent, pos.relPoint or pos.point, pos.x or 0, pos.y or 0)
+	else
+		win:SetPoint("CENTER")
+	end
+end
+
 function Window.Create()
 	if win then
 		return
@@ -461,7 +483,7 @@ function Window.Create()
 		end
 		Window.Refresh()
 	end)
-	win:SetPoint("CENTER")
+	RestoreWindowPos() -- open where the user left it (persisted), else centered
 	win:Hide()
 	table.insert(UISpecialFrames, "HolyOrdersWindow")
 
@@ -476,7 +498,10 @@ function Window.Create()
 	win.header:EnableMouse(true)
 	win.header:RegisterForDrag("LeftButton")
 	win.header:SetScript("OnDragStart", function() win:StartMoving() end)
-	win.header:SetScript("OnDragStop", function() win:StopMovingOrSizing() end)
+	win.header:SetScript("OnDragStop", function()
+		win:StopMovingOrSizing()
+		SaveWindowPos()
+	end)
 	win.header.bg = win.header:CreateTexture(nil, "BACKGROUND")
 	win.header.bg:SetAllPoints()
 	win.header.bg:SetColorTexture(0.94, 0.78, 0.09, 0.18)

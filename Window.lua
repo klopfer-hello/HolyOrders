@@ -31,6 +31,7 @@ local NONE_ICON = "Interface\\Buttons\\UI-GroupLoot-Pass-Up" -- explicit-none ma
 local win
 local expanded = {} -- [classToken] = true
 local classRows, memberRows = {}, {}
+local auraRow -- single "Aura" strip: each paladin column's assigned aura
 local scrollOffset = 0 -- pixels scrolled down; clamped in Window.Refresh
 
 -- helpers ---------------------------------------------------------------------
@@ -293,6 +294,99 @@ local function RowCell(row, colIndex, clickHandler)
 	return cell
 end
 
+-- aura strip ------------------------------------------------------------------
+
+-- ring of aura choices for a paladin: my own column offers only auras I know
+-- (matching the bar); assigning for another paladin offers every aura (their
+-- known set is not synced). None (0) always closes the ring.
+local function AuraRing(pally)
+	local me = HO.FullName("player")
+	local ring
+	if pally == me then
+		ring = HO.Data.KnownAuras()
+	else
+		ring = {}
+		for id = 1, HO.Data.NUM_AURAS do
+			ring[id] = id
+		end
+	end
+	ring[#ring + 1] = 0
+	return ring
+end
+
+local function NextAura(pally, delta)
+	local ring = AuraRing(pally)
+	local cur = HO.Plan.GetAura(pally) or 0
+	local idx = #ring -- default to the none slot (also covers an unknown current aura)
+	for i, id in ipairs(ring) do
+		if id == cur then
+			idx = i
+			break
+		end
+	end
+	local nextIdx = ((idx - 1 + (delta or 1)) % #ring) + 1
+	return ring[nextIdx]
+end
+
+local function AuraCellClick(cell, mouseBtn)
+	if not MayEdit(cell.pally) then
+		return
+	end
+	if mouseBtn == "RightButton" then
+		HO.Plan.SetAura(cell.pally, 0)
+	else
+		HO.Plan.SetAura(cell.pally, NextAura(cell.pally, 1))
+	end
+	RefreshAll()
+end
+
+local function AuraCellTooltip(cell)
+	GameTooltip:SetOwner(cell, "ANCHOR_RIGHT")
+	GameTooltip:SetText(cell.pally)
+	local id = HO.Plan.GetAura(cell.pally)
+	local name = id and HO.Data.AuraName(id)
+	GameTooltip:AddLine(string.format(L["aura: %s"], name or L["none"]), 1, 1, 1)
+	GameTooltip:AddLine(L["click: next aura — right-click: clear"], 0.8, 0.8, 0.8)
+	GameTooltip:Show()
+end
+
+local function AuraRowCell(row, colIndex)
+	local cell = row.cells[colIndex]
+	if not cell then
+		cell = CreateFrame("Button", nil, row)
+		cell:SetSize(COL_W - COL_GAP, ROW_H - 4)
+		cell:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+		cell.bg = cell:CreateTexture(nil, "BACKGROUND")
+		cell.bg:SetAllPoints()
+		cell.bg:SetColorTexture(0.20, 0.20, 0.55, 0.20) -- blue tint marks the aura strip
+		cell.icon = cell:CreateTexture(nil, "ARTWORK")
+		cell.icon:SetPoint("CENTER")
+		cell.icon:SetSize(ROW_H - 8, ROW_H - 8)
+		cell.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+		cell:SetScript("OnEnter", AuraCellTooltip)
+		cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
+		cell:SetScript("OnClick", AuraCellClick)
+		cell.hoCell = true -- re-render an open tooltip after a refresh
+		cell:SetPoint("LEFT", row, "LEFT", NAME_W + (colIndex - 1) * COL_W, 0)
+		row.cells[colIndex] = cell
+	end
+	return cell
+end
+
+local function AcquireAuraRow()
+	if not auraRow then
+		local row = CreateFrame("Frame", nil, win)
+		row:SetHeight(ROW_H)
+		row.cells = {}
+		row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		row.label:SetPoint("LEFT", 6, 0)
+		row.label:SetJustifyH("LEFT")
+		row.label:SetText(L["Aura"])
+		auraRow = row
+	end
+	return auraRow
+end
+
 function Window.Create()
 	if win then
 		return
@@ -445,6 +539,26 @@ function Window.Refresh()
 	local y = HEADER_H + FIRST_ROW_OFFSET
 	local classIndex, memberIndex = 0, 0
 	local placed = {} -- { {frame, y, h}, ... } positioned after contentHeight is known
+
+	-- aura strip: one row above the class grid, a cell per paladin column showing
+	-- that paladin's assigned aura (left-click cycles, right-click clears)
+	do
+		local row = AcquireAuraRow()
+		placed[#placed + 1] = { frame = row, y = y, h = ROW_H }
+		for c = 1, numCols do
+			local cell = AuraRowCell(row, c)
+			cell.pally = pallys[c]
+			local id = HO.Plan.GetAura(pallys[c])
+			local aura = id and HO.Data.auras[id]
+			cell.icon:SetTexture((aura and aura.icon) or NONE_ICON)
+			cell.icon:SetDesaturated(false)
+			cell:Show()
+		end
+		for c = numCols + 1, #row.cells do
+			row.cells[c]:Hide()
+		end
+		y = y + ROW_H
+	end
 
 	for _, classToken in ipairs(CLASS_ORDER) do
 		local list = members[classToken]

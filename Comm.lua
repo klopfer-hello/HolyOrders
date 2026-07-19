@@ -422,6 +422,17 @@ function Comm.OnTankToggled(name, flagged)
 	Send("T:" .. name .. ";" .. (flagged and "1" or "0"))
 end
 
+-- aura assignments are low-churn and last-writer-wins (like ST/MP), so they
+-- carry no revision: send immediately AU:<paladin>;<auraID or 0>.
+function Comm.OnAuraEdited(paladin)
+	if Comm.suspended or not me or not paladin then
+		return
+	end
+	local plan = HO.Plan.Active()
+	local id = plan.aura and plan.aura[paladin] or 0
+	Send("AU:" .. paladin .. ";" .. (id or 0))
+end
+
 -- emit a list of pre-encoded entries as one or more TYPE messages, each kept
 -- under the size cap by splitting only on entry ("|") boundaries
 local function SendEntryChunks(msgType, entries, channel, target)
@@ -477,6 +488,47 @@ function Comm.SendKnownMemberPrefs(channel, target)
 	end
 	table.sort(entries)
 	SendEntryChunks("MB", entries, channel, target)
+end
+
+-- piggybacked onto a greet: share every non-zero aura assignment in one or more
+-- AB batches (each entry "pally=id", split on entry boundaries under the cap).
+function Comm.SendKnownAuras(channel, target)
+	if not me then
+		return
+	end
+	local plan = HO.Plan.Active()
+	if not plan.aura then
+		return
+	end
+	local entries = {}
+	for pally, id in pairs(plan.aura) do
+		if id and id ~= 0 then
+			table.insert(entries, pally .. "=" .. id)
+		end
+	end
+	if #entries == 0 then
+		return
+	end
+	table.sort(entries)
+	SendEntryChunks("AB", entries, channel, target)
+end
+
+-- re-broadcast every non-zero aura assignment as live AU messages. PLANAPPLY
+-- carries no auras, so a lead that applied a stored plan uses this to teach the
+-- group each paladin's aura (receivers CanEdit-gate every AU by owner).
+function Comm.BroadcastAuras()
+	if not me then
+		return
+	end
+	local plan = HO.Plan.Active()
+	if not plan.aura then
+		return
+	end
+	for pally, id in pairs(plan.aura) do
+		if id and id ~= 0 then
+			Comm.OnAuraEdited(pally)
+		end
+	end
 end
 
 -- authoritative plan snapshot: a row for EVERY paladin in the roster (empty
@@ -583,6 +635,7 @@ handlers["H"] = function(sender, payload)
 			Comm.SendFull(sender)
 			Comm.SendKnownSpecTags("WHISPER", sender)
 			Comm.SendKnownMemberPrefs("WHISPER", sender)
+			Comm.SendKnownAuras("WHISPER", sender)
 		end)
 	end
 end
@@ -885,6 +938,51 @@ handlers["MB"] = function(sender, payload)
 	RefreshUI()
 end
 
+-- live aura assignment: last-writer-wins, no revisioning (auras change rarely).
+-- CanEdit gates by owner (self / lead / open-edit), the same gate row edits use.
+-- Direct write only (never via Plan.SetAura, which would echo back into Comm).
+handlers["AU"] = function(sender, payload)
+	local paladin, idStr = strsplit(";", payload)
+	if not paladin then
+		return
+	end
+	if not Comm.CanEdit(sender, paladin) then
+		return
+	end
+	local id = tonumber(idStr)
+	local plan = HO.Plan.Active()
+	plan.aura = plan.aura or {}
+	if not id or id == 0 then
+		plan.aura[paladin] = nil
+	elseif HO.Data.auras[id] then
+		plan.aura[paladin] = id
+	else
+		return -- unknown aura id: reject
+	end
+	RefreshUI()
+end
+
+-- batched aura assignments from a greet; CanEdit-gated per owner, direct writes
+handlers["AB"] = function(sender, payload)
+	if not payload then
+		return
+	end
+	local plan = HO.Plan.Active()
+	plan.aura = plan.aura or {}
+	local changed = false
+	for entry in string.gmatch(payload, "[^|]+") do
+		local paladin, idStr = entry:match("^(.+)=(%d+)$")
+		local id = paladin and tonumber(idStr)
+		if id and HO.Data.auras[id] and Comm.CanEdit(sender, paladin) then
+			plan.aura[paladin] = id
+			changed = true
+		end
+	end
+	if changed then
+		RefreshUI()
+	end
+end
+
 local protoWarned = {}
 
 -- mutating message types require the sender to be a current group member; when
@@ -895,6 +993,7 @@ local MUTATING = {
 	PS = true, PR = true, PT = true, PE = true,
 	NS = true, LR = true, LL = true, ST = true,
 	MP = true, MB = true,
+	AU = true, AB = true,
 	FG = true,
 }
 
@@ -1031,6 +1130,7 @@ HO.RegisterEvent("PLAYER_LOGIN", function()
 				Comm.SendFull()
 				Comm.SendKnownSpecTags()
 				Comm.SendKnownMemberPrefs()
+				Comm.SendKnownAuras()
 			end
 		end
 	end)

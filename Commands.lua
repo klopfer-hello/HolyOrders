@@ -540,6 +540,54 @@ HO.commands["tank"] = function(rest)
 	HO.Print(target .. (isTank and " is now flagged as tank" or " is no longer flagged as tank"))
 end
 
+-- paladin aura ----------------------------------------------------------------
+
+HO.commands["aura"] = function(rest)
+	local me = HO.FullName("player")
+	local arg = rest:match("^%s*(.-)%s*$") -- trim surrounding whitespace
+	if arg == "" then
+		local cur = HO.Plan.GetAura(me)
+		HO.Print("your aura: " .. (cur and (HO.Data.AuraName(cur) or ("#" .. cur)) or "none"))
+		local known = HO.Data.KnownAuras()
+		if #known == 0 then
+			HO.Print("no auras known")
+			return
+		end
+		HO.Print("known auras (use number or name):")
+		for _, id in ipairs(known) do
+			HO.PrintLine(id .. ". " .. (HO.Data.AuraName(id) or ("#" .. id)))
+		end
+		return
+	end
+	local lower = arg:lower()
+	if lower == "none" or lower == "0" or lower == "clear" then
+		HO.Plan.SetAura(me, 0)
+		HO.Print("aura cleared")
+		return
+	end
+	-- resolve by number (= aura id) or case-insensitive name prefix, both against
+	-- the auras this paladin actually knows
+	local id
+	local num = tonumber(arg)
+	if num and HO.Data.auras[num] and HO.Data.auras[num].known then
+		id = num
+	else
+		for _, kid in ipairs(HO.Data.KnownAuras()) do
+			local name = HO.Data.AuraName(kid)
+			if name and name:lower():sub(1, #lower) == lower then
+				id = kid
+				break
+			end
+		end
+	end
+	if not id then
+		HO.Print("no known aura matches '" .. arg .. "' — '/ho aura' lists them")
+		return
+	end
+	HO.Plan.SetAura(me, id)
+	HO.Print("aura: " .. (HO.Data.AuraName(id) or ("#" .. id)))
+end
+
 -- help ------------------------------------------------------------------------
 
 -- diagnostic/experimental commands, kept out of the default /ho help listing
@@ -560,6 +608,7 @@ local DESC = {
 	override = "set a per-player blessing override",
 	prefs = "list or clear remembered member blessings",
 	tank = "toggle a member's tank flag",
+	aura = "set or show your paladin aura",
 	spec = "tag a member's spec for the planner",
 	win = "toggle the assignment window",
 	opt = "open the options panel",

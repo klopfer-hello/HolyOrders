@@ -13,10 +13,12 @@ local GAP = 5
 local HANDLE_WIDTH = 12
 local MAX_BUTTONS = 9
 local UPDATE_INTERVAL = 1.0
+local NONE_ICON = "Interface\\Buttons\\UI-GroupLoot-Pass-Up" -- "no aura" placeholder (matches the window)
 
 local CLASS_ORDER = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
 
 local bar, handle, ticker
+local auraButton -- dedicated self-cast aura slot at the origin end (next to the handle)
 local buttons = {}
 local lastGrow
 local pendingReset
@@ -26,7 +28,8 @@ local pendingReset
 local function LayoutBar()
 	local grow = HO.db.options.bar and HO.db.options.bar.grow or "right"
 	local horizontal = (grow == "left" or grow == "right")
-	local length = HANDLE_WIDTH + GAP + MAX_BUTTONS * (BUTTON_SIZE + GAP)
+	-- +1 slot for the always-present aura button that sits at the origin end
+	local length = HANDLE_WIDTH + GAP + (MAX_BUTTONS + 1) * (BUTTON_SIZE + GAP)
 	if horizontal then
 		bar:SetSize(length, BUTTON_SIZE + 4)
 		handle:SetSize(HANDLE_WIDTH, BUTTON_SIZE)
@@ -44,18 +47,28 @@ local function LayoutBar()
 	else -- up
 		handle:SetPoint("BOTTOM", bar, "BOTTOM", 0, 0)
 	end
-	for i, btn in ipairs(buttons) do
-		local offset = HANDLE_WIDTH + GAP + (i - 1) * (BUTTON_SIZE + GAP)
-		btn:ClearAllPoints()
+	-- anchor a frame at a linear distance from the origin end, for the current
+	-- grow direction (the origin end is always where the handle sits)
+	local function PlaceAtOffset(frame, offset)
+		frame:ClearAllPoints()
 		if grow == "right" then
-			btn:SetPoint("LEFT", bar, "LEFT", offset, 0)
+			frame:SetPoint("LEFT", bar, "LEFT", offset, 0)
 		elseif grow == "left" then
-			btn:SetPoint("RIGHT", bar, "RIGHT", -offset, 0)
+			frame:SetPoint("RIGHT", bar, "RIGHT", -offset, 0)
 		elseif grow == "down" then
-			btn:SetPoint("TOP", bar, "TOP", 0, -offset)
+			frame:SetPoint("TOP", bar, "TOP", 0, -offset)
 		else
-			btn:SetPoint("BOTTOM", bar, "BOTTOM", 0, offset)
+			frame:SetPoint("BOTTOM", bar, "BOTTOM", 0, offset)
 		end
+	end
+	-- the aura button takes the first slot (slot 0) right after the handle; the
+	-- class buttons follow, shifted one slot along
+	if auraButton then
+		PlaceAtOffset(auraButton, HANDLE_WIDTH + GAP)
+	end
+	for i, btn in ipairs(buttons) do
+		local offset = HANDLE_WIDTH + GAP + i * (BUTTON_SIZE + GAP)
+		PlaceAtOffset(btn, offset)
 		-- in vertical growth the buttons stack with only GAP between them, so
 		-- a timer under the icon overlaps the neighbour; put it to the side
 		-- (clear of the handle, which sits at the top/bottom origin)
@@ -231,6 +244,109 @@ local function CreateButton(index)
 	return btn
 end
 
+-- wheel-cycle MY aura through the known auras then none (out of combat only,
+-- like the class wheel); edits my own assignment, which syncs and refreshes.
+local function CycleMyAura(delta)
+	local me = HO.FullName("player")
+	if not me then
+		return
+	end
+	-- ring: known auras in id order, then none (0). Wheel-up advances, down retreats.
+	local ring = HO.Data.KnownAuras()
+	ring[#ring + 1] = 0
+	local cur = HO.Plan.GetAura(me) or 0
+	local idx = #ring -- default to the none slot (also covers an unknown assigned aura)
+	for i, id in ipairs(ring) do
+		if id == cur then
+			idx = i
+			break
+		end
+	end
+	local nextIdx = ((idx - 1 + delta) % #ring) + 1
+	HO.Plan.SetAura(me, ring[nextIdx])
+	Bar.Refresh()
+	HO.Window.Refresh()
+end
+
+-- the always-present self-cast aura slot; sits at the origin end so it reads as
+-- "my aura", separate from the class-duty buttons
+local function CreateAuraButton()
+	local btn = CreateFrame("Button", "HolyOrdersBarAura", bar, "SecureActionButtonTemplate")
+	btn:SetSize(BUTTON_SIZE, BUTTON_SIZE)
+	btn:RegisterForClicks("AnyDown", "AnyUp")
+	-- auras are self-cast; unit1 never changes, so it is safe to set once here.
+	-- spell1 (the aura name) is set from RefreshAuraButton, out of combat only.
+	btn:SetAttribute("type1", "spell")
+	btn:SetAttribute("unit1", "player")
+	btn:EnableMouseWheel(true)
+	btn:SetScript("OnMouseWheel", function(_, delta)
+		if InCombatLockdown() then
+			return -- changing the secure spell attribute is forbidden in combat
+		end
+		CycleMyAura(delta > 0 and 1 or -1)
+	end)
+	btn.hoAuraButton = true -- marks the aura button for the tooltip re-render check
+
+	btn.bg = btn:CreateTexture(nil, "BACKGROUND")
+	btn.bg:SetAllPoints()
+	btn.bg:SetColorTexture(0.10, 0.10, 0.32, 0.80) -- blue tint distinguishes it from duty buttons
+
+	btn.icon = btn:CreateTexture(nil, "ARTWORK")
+	btn.icon:SetPoint("TOPLEFT", 2, -2)
+	btn.icon:SetPoint("BOTTOMRIGHT", -2, 2)
+	btn.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+
+	btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	btn.label:SetPoint("BOTTOM", btn, "BOTTOM", 0, 1)
+	btn.label:SetText(L["Aura"])
+
+	btn:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:SetText(L["My Aura"])
+		local me = HO.FullName("player")
+		local id = me and HO.Plan.GetAura(me)
+		local name = id and HO.Data.AuraName(id)
+		if name then
+			GameTooltip:AddLine(name, 1, 1, 1)
+		else
+			GameTooltip:AddLine(L["no aura assigned"], 0.8, 0.8, 0.8)
+		end
+		GameTooltip:AddLine(L["mouse wheel: change your aura"], 0.8, 0.8, 0.8)
+		GameTooltip:Show()
+	end)
+	btn:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+	return btn
+end
+
+-- aura-button visuals + secure self-cast attribute. The attribute is written
+-- only out of combat; the combat branch refreshes the icon alone.
+local function RefreshAuraButton()
+	if not auraButton then
+		return
+	end
+	local me = HO.FullName("player")
+	local id = me and HO.Plan.GetAura(me)
+	local aura = id and HO.Data.auras[id]
+	local castable = aura and aura.known and aura.name
+	if InCombatLockdown() then
+		auraButton.icon:SetTexture((castable and aura.icon) or NONE_ICON)
+		auraButton.icon:SetDesaturated(false)
+		return
+	end
+	if castable then
+		auraButton:SetAttribute("spell1", aura.name)
+		auraButton.icon:SetTexture(aura.icon)
+	else
+		-- none, or an assigned aura this paladin does not know: clear the cast and
+		-- show the placeholder icon (same as the class-duty none marker)
+		auraButton:SetAttribute("spell1", nil)
+		auraButton.icon:SetTexture(NONE_ICON)
+	end
+	auraButton.icon:SetDesaturated(false)
+end
+
 function Bar.Create()
 	if bar then
 		return
@@ -289,6 +405,7 @@ function Bar.Create()
 		btn:Hide()
 		buttons[i] = btn
 	end
+	auraButton = CreateAuraButton() -- always present; follows the bar's visibility
 	LayoutBar()
 	RestorePosition()
 	bar:Hide()
@@ -330,6 +447,7 @@ function Bar.Refresh()
 				end
 			end
 		end
+		RefreshAuraButton() -- icon only in combat; never touches attributes
 		return
 	end
 
@@ -387,9 +505,15 @@ function Bar.Refresh()
 		buttons[i]:SetAttribute("unit2", nil)
 	end
 
+	RefreshAuraButton()
 	local isPally = select(2, UnitClass("player")) == "PALADIN"
-	if isPally and not BarOptions().hidden and index > 0 then
+	-- the aura slot is always relevant to a paladin, so the bar shows when there
+	-- are duties OR an aura is assigned (so the aura button is reachable to wheel)
+	local me = HO.FullName("player")
+	local hasAura = me and HO.Plan.GetAura(me)
+	if isPally and not BarOptions().hidden and (index > 0 or hasAura) then
 		bar:Show()
+		auraButton:Show()
 	else
 		bar:Hide()
 	end
@@ -397,7 +521,16 @@ function Bar.Refresh()
 	-- a tooltip open over a button now describes freshly-reassigned data; a
 	-- single owner check re-renders it (or hides it if the button went away)
 	local owner = GameTooltip:GetOwner()
-	if owner and owner.hoBarButton then
+	if owner and owner.hoAuraButton then
+		if owner:IsShown() then
+			local onEnter = owner:GetScript("OnEnter")
+			if onEnter then
+				onEnter(owner)
+			end
+		else
+			GameTooltip:Hide()
+		end
+	elseif owner and owner.hoBarButton then
 		if owner:IsShown() and owner.task then
 			local onEnter = owner:GetScript("OnEnter")
 			if onEnter then

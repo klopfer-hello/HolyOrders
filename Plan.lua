@@ -20,6 +20,7 @@ local function NewPlan()
 		version = 1,
 		class = {}, -- [paladinName][classToken] = { id, mode }
 		player = {}, -- [paladinName][targetName] = blessingID
+		aura = {}, -- [paladinName] = auraID (which aura that paladin runs)
 		tanks = {}, -- [characterName] = true (roster-scoped, per spec)
 		meta = { created = time() },
 	}
@@ -83,6 +84,7 @@ function Plan.Active()
 	local plan = HO.db.activePlan
 	plan.class = plan.class or {}
 	plan.player = plan.player or {}
+	plan.aura = plan.aura or {}
 	plan.tanks = plan.tanks or {}
 	plan.meta = plan.meta or { created = time() }
 	return plan
@@ -121,6 +123,29 @@ function Plan.SetClassNone(paladin, classToken)
 	if HO.Comm then
 		HO.Comm.OnClassEdited(paladin, classToken)
 	end
+end
+
+-- which aura a paladin runs (0/nil clears). Mirrors SetClassAssignment: writes
+-- the plan, marks it dirty and notifies Comm (nil-safe) for a live broadcast.
+function Plan.SetAura(paladin, auraID)
+	local plan = Plan.Active()
+	if not auraID or auraID == 0 then
+		plan.aura[paladin] = nil
+	else
+		plan.aura[paladin] = auraID
+	end
+	MarkDirty(plan)
+	if HO.Comm then
+		HO.Comm.OnAuraEdited(paladin)
+	end
+end
+
+function Plan.GetAura(paladin)
+	if not paladin then
+		return nil
+	end
+	local plan = Plan.Active()
+	return plan.aura and plan.aura[paladin] or nil
 end
 
 function Plan.SetPlayerOverride(paladin, targetName, blessingID)
@@ -397,6 +422,8 @@ local function OnRosterChanged()
 		if HO.Comm then
 			if UnitIsGroupLeader("player") then
 				if HO.Comm.SendPlanApply() then
+					-- PLANAPPLY carries no auras; the lead teaches them here
+					HO.Comm.BroadcastAuras()
 					HO.Print(L("plan broadcast to the group"))
 				end
 			else
@@ -442,6 +469,7 @@ function Plan.ApplySuggestion()
 	stored.meta.lastUsed = time()
 	Plan.suggestion = nil
 	if HO.Comm and HO.Comm.SendPlanApply() then
+		HO.Comm.BroadcastAuras() -- PLANAPPLY carries no auras; teach them here
 		HO.Print(L("plan broadcast to the group"))
 	end
 	return true

@@ -69,6 +69,14 @@ L["right-click: force rebuff (pre-pull refresh)"] = "Rechtsklick: Zwangs-Rebuff 
 L["shift-right-click: assignment window"] = "Shift-Rechtsklick: Zuteilungsfenster"
 L["mouse wheel: change my assignment"] = "Mausrad: meine Zuteilung wechseln"
 
+-- paladin aura
+L["Aura"] = "Aura"
+L["My Aura"] = "Meine Aura"
+L["no aura assigned"] = "Keine Aura zugewiesen"
+L["mouse wheel: change your aura"] = "Mausrad: deine Aura wechseln"
+L["aura: %s"] = "Aura: %s"
+L["click: next aura — right-click: clear"] = "Klick: nächste Aura — Rechtsklick: leeren"
+
 -- minimap button
 L["click: assignment window"] = "Klick: Zuteilungsfenster"
 L["right-click: force rebuff"] = "Rechtsklick: Zwangs-Rebuff"

@@ -18,6 +18,22 @@ Data.blessings = {
 }
 Data.NUM_BLESSINGS = #Data.blessings
 
+-- stable aura IDs (used in SavedVariables and comm; never renumber). Each maps
+-- to a representative base spell whose localized name and icon we resolve from
+-- the running client, so no localized aura name is ever hardcoded. Auras have
+-- no "greater" form and rank is just level, so there is no rank scoring.
+Data.auras = {
+	[1] = { base = 465 },   -- Devotion Aura
+	[2] = { base = 7294 },  -- Retribution Aura
+	[3] = { base = 19746 }, -- Concentration Aura
+	[4] = { base = 19876 }, -- Shadow Resistance Aura
+	[5] = { base = 19888 }, -- Frost Resistance Aura
+	[6] = { base = 19891 }, -- Fire Resistance Aura
+	[7] = { base = 20218 }, -- Sanctity Aura (talent-gated)
+	[8] = { base = 32223 }, -- Crusader Aura
+}
+Data.NUM_AURAS = #Data.auras
+
 Data.SYMBOL_OF_KINGS = 21177 -- reagent for greater blessings
 
 -- eligibility (SPEC-planner §2); manual per-member overrides may bypass this
@@ -78,6 +94,40 @@ function Data.Refresh()
 			blessing.rankNum = 0
 		end
 	end
+	Data.RefreshAuras()
+end
+
+-- auras resolve exactly like blessings: localized name/icon from the base spell,
+-- known-detection from the spellbook scan (never a hardcoded localized string).
+-- Called from Data.Refresh so a spellbook change refreshes both at once.
+function Data.RefreshAuras()
+	local book = ScanSpellbook()
+	for _, aura in ipairs(Data.auras) do
+		local name, _, icon = GetSpellInfo(aura.base)
+		aura.name, aura.icon = name, icon
+		aura.known = (name and book[name]) ~= nil
+	end
+end
+
+-- ids of known auras in id order (mirrors the blessing helpers)
+function Data.KnownAuras()
+	local ids = {}
+	for id, aura in ipairs(Data.auras) do
+		if aura.known then
+			ids[#ids + 1] = id
+		end
+	end
+	return ids
+end
+
+function Data.AuraName(id)
+	local aura = id and Data.auras[id]
+	return aura and aura.name or nil
+end
+
+function Data.AuraIcon(id)
+	local aura = id and Data.auras[id]
+	return aura and aura.icon or nil
 end
 
 function Data.SymbolCount()

@@ -20,7 +20,7 @@ local MAX_COLS = 8
 local LABEL_INDENT = 14 -- member-row label indent (rows themselves stay aligned)
 local HEADER_MAX_CHARS = 5
 local MAX_WIN_H = 700 -- height clamp; taller rosters scroll via the mouse wheel
-local BOTTOM_PAD = 38 -- reserved space under the last row for the hint lines
+local BOTTOM_PAD = 48 -- reserved space under the last row for the hint lines + corner crest
 local FIRST_ROW_OFFSET = 20 -- gap between the column headers and the first row
 local ICON_SIZE = 24 -- cell icon size (rows grow with it so icons don't overflow)
 
@@ -596,12 +596,13 @@ function Window.Create()
 
 	BuildWindowSkin(win) -- dark rounded panel + thin gold border (decorative; tracks size)
 
-	-- addon crest in the bottom-right, seated just above the hint line. It draws on
-	-- ARTWORK, so every row/cell/header/hint renders over it: in a full roster the
-	-- grid covers it, in a small one it shows as an emblem in the empty area.
+	-- addon crest tucked into the bottom-right corner. It draws on ARTWORK, so every
+	-- row/cell/header/hint renders over it: in a full roster the grid covers it, in a
+	-- small one it shows as an emblem in the empty area. The hint is bounded to its
+	-- left (below) so its text never runs across the crest.
 	win.brand = win:CreateTexture(nil, "ARTWORK")
 	win.brand:SetSize(64, 64)
-	win.brand:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -12, BOTTOM_PAD + 2)
+	win.brand:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -8, 6)
 	win.brand:SetTexture(SKIN_BRAND)
 	win.brand:SetAlpha(0.9)
 
@@ -701,7 +702,7 @@ function Window.Create()
 	win.colHeader = {}
 	win.hint = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	win.hint:SetPoint("BOTTOMLEFT", 10, 6)
-	win.hint:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -10, 6)
+	win.hint:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -78, 6) -- clear the corner crest
 	win.hint:SetJustifyH("LEFT")
 
 	Window.ApplyScale() -- apply the saved window scale on first open

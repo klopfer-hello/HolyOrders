@@ -64,15 +64,17 @@ local function BarOptions()
 	return HO.db.options.bar
 end
 
+-- the client re-anchors a dragged frame to the nearest corner, so the full
+-- anchor (point + relativePoint + offsets) must be saved, not just offsets
 local function SavePosition()
 	local opts = BarOptions()
-	local _, _, _, x, y = bar:GetPoint()
-	opts.x, opts.y = x, y
+	local point, _, relativePoint, x, y = bar:GetPoint()
+	opts.point, opts.relPoint, opts.x, opts.y = point, relativePoint, x, y
 end
 
 function Bar.ResetPosition()
 	local opts = BarOptions()
-	opts.x, opts.y = nil, nil
+	opts.point, opts.relPoint, opts.x, opts.y = nil, nil, nil, nil
 	bar:ClearAllPoints()
 	bar:SetPoint("CENTER", UIParent, "CENTER", 0, -180)
 end
@@ -80,7 +82,11 @@ end
 local function RestorePosition()
 	local opts = BarOptions()
 	bar:ClearAllPoints()
-	bar:SetPoint("CENTER", UIParent, "CENTER", opts.x or 0, opts.y or -180)
+	if opts.point then
+		bar:SetPoint(opts.point, UIParent, opts.relPoint or opts.point, opts.x or 0, opts.y or 0)
+	else
+		bar:SetPoint("CENTER", UIParent, "CENTER", opts.x or 0, opts.y or -180)
+	end
 end
 
 local function FormatShort(seconds)

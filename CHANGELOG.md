@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-07-19
+
+Results of the second full adversarial review. **Sync protocol v4 — breaking:
+all paladins in the group must update together** (older versions are announced
+in chat as incompatible, same as the v3 bump).
+
+### Fixed
+
+Sync:
+- Loading a stored plan rolled the sync revision counters back to save time —
+  afterwards every edit and plan broadcast from that client was silently
+  rejected by the whole group. Stored plans no longer carry revision state.
+- Plan broadcasts could apply partially when racing a pending edit (tank list
+  changed, rows kept); they are now authoritative snapshots applied atomically
+  or not at all, including an explicit row for every paladin so a de-assigned
+  paladin's stale duty can no longer resurrect.
+- The tank list rode inside the broadcast's final message and could exceed the
+  addon-message size cap — the whole plan apply then silently vanished for the
+  raid. It now travels in its own chunked messages.
+- Players outside the group could edit plans and tank flags by whisper; all
+  state-changing messages now require the sender to be a current group member.
+- Message bursts are rate-limited (classic clients silently drop floods), and
+  remote log pulls have a per-requester cooldown.
+- Malformed revision values are rejected; two message paths that applied older
+  revisions backwards are consistent with the rest.
+- Tank flags send immediately, and a received plan snapshot cancels pending
+  tank sends — a debounce race could invert a tank click group-wide.
+
+Planning and casting:
+- Spec tags inferred by inspection were client-local, so a paladin whose
+  client had not inspected the tank could still cast Salvation on them;
+  protection tags now sync to the group.
+- Auto-assigned single overrides could go to a paladin whose own greater
+  blessing covers the same class — every greater refresh wiped their single.
+  Caster selection avoids these paladins when possible, and pending greater
+  casts hold back override singles on the same class.
+- Party auto-planning could compute different casters on different clients
+  (party unit order is client-relative); members are processed in a
+  deterministic order now.
+- No-Salvation mode: enabling with no Salvation in the plan is refused (a
+  racing second lead would snapshot an already-swapped plan), roster changes
+  no longer auto-apply a stored Salvation-bearing plan while the mode is
+  active, and a demoted snapshot holder can still broadcast a lead-requested
+  revert.
+- Greater-blessing decisions count only members that can actually be cast on
+  (offline/dead members no longer waste a Symbol of Kings), and the force
+  rebuff sweep ends even while unreachable members are missing buffs.
+- Only hunter and warlock pets are considered for pet buffs — temporary pets
+  (shadowfiends, water elementals) no longer prompt endless buffing.
+
+Interface:
+- Moving or resetting the cast bar in combat no longer triggers the Blizzard
+  protected-action error (reset defers to combat end).
+- Member override cells were drawn shifted right of their paladin's column.
+- Cast bar timer text no longer overlaps the next button in vertical layouts,
+  and switching the growth direction keeps the handle in place.
+- Paladin names with umlauts no longer truncate into garbled column headers.
+- Open tooltips refresh when the button or cell under the cursor is
+  reassigned; the class tooltip's greater-vs-singles prediction uses the
+  engine's real verdict.
+- The mouse wheel on a bar button that shows only a single-member override no
+  longer creates a class-wide duty out of nothing.
+- Long German option labels wrap, the options panel live-refreshes while
+  open, and plan/pet toggles update an open assignment window.
+
+### Changed
+- Sync protocol v4 (breaking): plan broadcasts are atomic snapshots; tank
+  lists and spec tags have their own message types.
+
 ## [0.16.0] - 2026-07-19
 
 Results of a full adversarial code review before v1.0.

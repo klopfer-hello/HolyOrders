@@ -56,6 +56,13 @@ local function TargetBlessing(plan, me, entry)
 	local overrides = plan.player[me]
 	local override = overrides and entry.name and overrides[entry.name]
 	if override then
+		-- an override identical to the class assignment is redundant: treat
+		-- the member as a class-wide target so greater blessings stay possible
+		local assigns = plan.class[me]
+		local assign = assigns and entry.class and assigns[entry.class]
+		if assign and not entry.isPet and assign.id == override then
+			return assign.id, false
+		end
 		return override, true
 	end
 	if entry.isPet then

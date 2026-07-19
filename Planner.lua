@@ -337,6 +337,24 @@ function Planner.Run()
 		end
 	end
 
+	-- drop overrides that merely duplicate the class assignment — they would
+	-- force needless singles where a greater blessing covers the member
+	for pally, targets in pairs(plan.player) do
+		local rows = plan.class[pally]
+		if rows then
+			for target, id in pairs(targets) do
+				local entry = HO.Roster.byName[target]
+				local a = entry and not entry.isPet and rows[entry.class]
+				if a and a.id == id then
+					targets[target] = nil
+					if plan.autoPlayer and plan.autoPlayer[pally] then
+						plan.autoPlayer[pally][target] = nil
+					end
+				end
+			end
+		end
+	end
+
 	-- summary
 	local overrideCount = 0
 	if plan.autoPlayer then

@@ -1,4 +1,4 @@
--- HolyOrders — options panel
+-- HolyOrders — options panel (mounted in Blizzard's Interface Options)
 
 local HO = HolyOrders
 local Options = {}
@@ -8,9 +8,10 @@ local L = HO.L
 local PET_CYCLE = { 2, 1, 3 } -- Might > Wisdom > Kings
 local GROW_CYCLE = { "right", "left", "down", "up" }
 local REFRESH_INTERVAL = 1.0
-local LABEL_WIDTH = 280 -- wrap long (German) labels instead of running off the frame
+local LABEL_WIDTH = 480 -- wrap long (German) labels instead of running off the panel
 
-local frame
+local panel
+local category -- retail Settings category handle (nil on 2.5.6)
 local checks = {}
 local ITEMS
 
@@ -23,7 +24,7 @@ function Options.Ensure()
 end
 
 local function Refresh()
-	if not frame or not frame:IsShown() then
+	if not panel or not panel:IsShown() then
 		return
 	end
 	local o = Options.Ensure()
@@ -31,8 +32,8 @@ local function Refresh()
 		checks[i]:SetChecked(item.get(o) and true or false)
 	end
 	local blessing = HO.Data.blessings[o.pets.blessing or 2]
-	frame.petBtn:SetText(string.format(L["Pet blessing: %s"], blessing and (blessing.name or blessing.key) or "?"))
-	frame.growBtn:SetText(string.format(L["Bar grows: %s"], o.bar.grow or "right"))
+	panel.petBtn:SetText(string.format(L["Pet blessing: %s"], blessing and (blessing.name or blessing.key) or "?"))
+	panel.growBtn:SetText(string.format(L["Bar grows: %s"], o.bar.grow or "right"))
 end
 
 -- toggles that change plan/pet display must also update an open assignment
@@ -58,67 +59,43 @@ ITEMS = {
 }
 
 function Options.Create()
-	if frame then
+	if panel then
 		return
 	end
-	frame = CreateFrame("Frame", "HolyOrdersOptions", UIParent)
-	frame:SetFrameStrata("DIALOG")
-	frame:SetSize(330, 60 + #ITEMS * 26 + 74)
-	frame:SetPoint("CENTER")
-	frame:SetMovable(true)
-	frame:SetClampedToScreen(true)
-	frame:EnableMouse(true)
-	frame:Hide()
-	table.insert(UISpecialFrames, "HolyOrdersOptions")
+	-- a plain Frame is all a Blizzard options panel needs; the container reparents
+	-- and sizes it (~600 px wide) once it is registered as a category
+	panel = CreateFrame("Frame", "HolyOrdersOptionsPanel", UIParent)
+	panel.name = "HolyOrders"
+	panel:Hide()
 
-	-- keep the panel in sync with /ho toggles made in chat while it is open
-	frame:SetScript("OnShow", function(self)
+	local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
+	title:SetPoint("TOPLEFT", 16, -16)
+	title:SetText(L["HolyOrders — Options"])
+
+	-- keep the panel in sync with /ho toggles made in chat while it is shown;
+	-- panels stay mounted in the container, so OnShow/OnHide fire as the user
+	-- navigates between categories
+	panel:SetScript("OnShow", function(self)
 		Refresh()
 		if not self.ticker then
 			self.ticker = C_Timer.NewTicker(REFRESH_INTERVAL, Refresh)
 		end
 	end)
-	frame:SetScript("OnHide", function(self)
+	panel:SetScript("OnHide", function(self)
 		if self.ticker then
 			self.ticker:Cancel()
 			self.ticker = nil
 		end
 	end)
 
-	frame.bg = frame:CreateTexture(nil, "BACKGROUND")
-	frame.bg:SetAllPoints()
-	frame.bg:SetColorTexture(0.05, 0.05, 0.08, 0.93)
-
-	local header = CreateFrame("Frame", nil, frame)
-	header:SetPoint("TOPLEFT")
-	header:SetPoint("TOPRIGHT")
-	header:SetHeight(28)
-	header:EnableMouse(true)
-	header:RegisterForDrag("LeftButton")
-	header:SetScript("OnDragStart", function() frame:StartMoving() end)
-	header:SetScript("OnDragStop", function() frame:StopMovingOrSizing() end)
-	header.bg = header:CreateTexture(nil, "BACKGROUND")
-	header.bg:SetAllPoints()
-	header.bg:SetColorTexture(0.94, 0.78, 0.09, 0.18)
-	header.title = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	header.title:SetPoint("LEFT", 10, 0)
-	header.title:SetText(L["HolyOrders — Options"])
-
-	local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-	close:SetPoint("TOPRIGHT", 2, 2)
-	close:SetFrameLevel(header:GetFrameLevel() + 1) -- above the drag header
-	close:SetScript("OnClick", function()
-		frame:Hide()
-	end)
-
+	local topOffset = 48 -- clear the title
 	for i, item in ipairs(ITEMS) do
-		local check = CreateFrame("CheckButton", "HolyOrdersOptCheck" .. i, frame, "UICheckButtonTemplate")
+		local check = CreateFrame("CheckButton", "HolyOrdersOptCheck" .. i, panel, "UICheckButtonTemplate")
 		check:SetSize(24, 24)
-		check:SetPoint("TOPLEFT", 12, -(34 + (i - 1) * 26))
+		check:SetPoint("TOPLEFT", 16, -(topOffset + (i - 1) * 26))
 		local labelText = _G["HolyOrdersOptCheck" .. i .. "Text"]
 		labelText:SetText(item.label)
 		-- cap width so long labels wrap onto a second line instead of spilling
-		-- past the ~330 px frame edge
 		labelText:SetWidth(LABEL_WIDTH)
 		labelText:SetWordWrap(true)
 		labelText:SetJustifyH("LEFT")
@@ -129,10 +106,12 @@ function Options.Create()
 		checks[i] = check
 	end
 
-	frame.growBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-	frame.growBtn:SetSize(220, 22)
-	frame.growBtn:SetPoint("BOTTOMLEFT", 12, 40)
-	frame.growBtn:SetScript("OnClick", function()
+	local buttonsTop = topOffset + #ITEMS * 26 + 8
+
+	panel.growBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+	panel.growBtn:SetSize(240, 22)
+	panel.growBtn:SetPoint("TOPLEFT", 16, -buttonsTop)
+	panel.growBtn:SetScript("OnClick", function()
 		local o = Options.Ensure()
 		local nextDir = GROW_CYCLE[1]
 		for i, dir in ipairs(GROW_CYCLE) do
@@ -146,10 +125,10 @@ function Options.Create()
 		HO.Bar.Refresh()
 	end)
 
-	frame.petBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
-	frame.petBtn:SetSize(220, 22)
-	frame.petBtn:SetPoint("BOTTOMLEFT", 12, 12)
-	frame.petBtn:SetScript("OnClick", function()
+	panel.petBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+	panel.petBtn:SetSize(240, 22)
+	panel.petBtn:SetPoint("TOPLEFT", 16, -(buttonsTop + 28))
+	panel.petBtn:SetScript("OnClick", function()
 		local o = Options.Ensure()
 		local nextID = PET_CYCLE[1]
 		for i, id in ipairs(PET_CYCLE) do
@@ -162,14 +141,27 @@ function Options.Create()
 		Refresh()
 		RefreshAll()
 	end)
-end
 
-function Options.Toggle()
-	Options.Create()
-	if frame:IsShown() then
-		frame:Hide()
-	else
-		frame:Show()
-		Refresh()
+	-- register with whichever options system this client provides
+	if InterfaceOptions_AddCategory then
+		InterfaceOptions_AddCategory(panel)
+	elseif Settings and Settings.RegisterCanvasLayoutCategory then
+		category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
+		Settings.RegisterAddOnCategory(category)
 	end
 end
+
+-- opens the Blizzard options at our category (kept as the public entry point;
+-- other modules and /ho opt call this)
+function Options.Toggle()
+	Options.Create()
+	if InterfaceOptionsFrame_OpenToCategory then
+		-- classic quirk: the first call may not navigate on a cold frame
+		InterfaceOptionsFrame_OpenToCategory(panel)
+		InterfaceOptionsFrame_OpenToCategory(panel)
+	elseif Settings and Settings.OpenToCategory and category then
+		Settings.OpenToCategory(category.ID or category:GetID())
+	end
+end
+
+HO.RegisterEvent("PLAYER_LOGIN", Options.Create)

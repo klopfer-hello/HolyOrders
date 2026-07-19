@@ -166,6 +166,8 @@ function Engine.Update()
 				classToken = classToken,
 				blessingID = nextItem.blessingID,
 				spellName = castGreater and blessing.greaterName or blessing.name,
+				-- right-click alternative: always the 10-min single
+				singleSpellName = blessing.name,
 				unit = nextItem.entry.unit,
 				unitName = nextItem.entry.name,
 				missing = missingCount,

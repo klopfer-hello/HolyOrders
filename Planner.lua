@@ -10,21 +10,21 @@ HO.Planner = Planner
 
 local WISDOM, MIGHT, KINGS, SALVATION, LIGHT, SANCTUARY = 1, 2, 3, 4, 5, 6
 
--- blessing coverage priority by paladin count position
+-- raid blessing coverage priority by paladin count position (parties use
+-- per-class preference lists instead)
 local RAID_COVERAGE = { KINGS, SALVATION, MIGHT, WISDOM, LIGHT, SANCTUARY }
-local PARTY_COVERAGE = { KINGS, MIGHT, WISDOM, LIGHT, SANCTUARY, SALVATION }
 
 -- shipped class/spec preference defaults; user copies in HO.db.prefs win
 local DEFAULT_PREFS = {
-	WARRIOR = { default = { KINGS, MIGHT }, protection = { KINGS } },
-	ROGUE = { default = { MIGHT, KINGS } },
-	PRIEST = { default = { WISDOM, KINGS } },
-	MAGE = { default = { WISDOM, KINGS } },
-	WARLOCK = { default = { WISDOM, KINGS } },
-	HUNTER = { default = { MIGHT, KINGS, WISDOM } },
-	SHAMAN = { default = { WISDOM, KINGS }, enhancement = { MIGHT, KINGS }, elemental = { WISDOM, KINGS }, restoration = { WISDOM, KINGS } },
-	DRUID = { default = { WISDOM, KINGS }, feral = { MIGHT, KINGS }, balance = { WISDOM, KINGS }, restoration = { WISDOM, KINGS } },
-	PALADIN = { default = { KINGS, WISDOM }, holy = { WISDOM, KINGS }, protection = { KINGS }, retribution = { MIGHT, KINGS } },
+	WARRIOR = { default = { KINGS, MIGHT, SALVATION }, protection = { KINGS } },
+	ROGUE = { default = { MIGHT, SALVATION, KINGS } },
+	PRIEST = { default = { WISDOM, SALVATION, KINGS } },
+	MAGE = { default = { WISDOM, SALVATION, KINGS } },
+	WARLOCK = { default = { WISDOM, SALVATION, KINGS } },
+	HUNTER = { default = { MIGHT, SALVATION, KINGS, WISDOM } },
+	SHAMAN = { default = { WISDOM, SALVATION, KINGS }, enhancement = { MIGHT, SALVATION, KINGS }, elemental = { WISDOM, SALVATION, KINGS }, restoration = { WISDOM, SALVATION, KINGS } },
+	DRUID = { default = { WISDOM, SALVATION, KINGS }, feral = { MIGHT, SALVATION, KINGS }, balance = { WISDOM, SALVATION, KINGS }, restoration = { WISDOM, SALVATION, KINGS } },
+	PALADIN = { default = { KINGS, WISDOM }, holy = { WISDOM, KINGS }, protection = { KINGS }, retribution = { MIGHT, KINGS, SALVATION } },
 }
 Planner.DEFAULT_PREFS = DEFAULT_PREFS
 
@@ -219,11 +219,10 @@ function Planner.Run()
 				HO.Plan.SetClassAssignment(pallys[1], classToken, best, "auto")
 			end
 		end
-	else
-		local coverage = isRaid and RAID_COVERAGE or PARTY_COVERAGE
+	elseif isRaid then
 		local used = {}
-		for i = 1, math.min(#pallys, #coverage) do
-			local blessing = coverage[i]
+		for i = 1, math.min(#pallys, #RAID_COVERAGE) do
+			local blessing = RAID_COVERAGE[i]
 			local best, bestScore
 			for _, pally in ipairs(pallys) do -- sorted; strict > keeps ties alphabetical
 				if not used[pally] and Available(pally, blessing) then
@@ -236,6 +235,37 @@ function Planner.Run()
 			if best then
 				used[best] = true
 				assigned[best] = blessing
+			end
+		end
+	else
+		-- multi-paladin party: singles economics — each class gets its top
+		-- preferences, one per paladin (different blessings per class are
+		-- fine; one-blessing-per-paladin is a per-target rule)
+		for classToken in pairs(classes) do
+			local prefs = HO.db.prefs[classToken] or DEFAULT_PREFS[classToken]
+			local list = (prefs and prefs.default) or {}
+			local usedPally = {}
+			local slots = 0
+			for _, blessingID in ipairs(list) do
+				if slots >= #pallys then
+					break
+				end
+				if HO.Data.IsEligible(classToken, blessingID, false) then
+					local best, bestScore
+					for _, pally in ipairs(pallys) do
+						if not usedPally[pally] and Available(pally, blessingID) then
+							local score = Score(pally, blessingID)
+							if not bestScore or score > bestScore then
+								best, bestScore = pally, score
+							end
+						end
+					end
+					if best then
+						usedPally[best] = true
+						slots = slots + 1
+						HO.Plan.SetClassAssignment(best, classToken, blessingID, "auto")
+					end
+				end
 			end
 		end
 	end

@@ -71,7 +71,9 @@ local function CreateButton(index)
 	-- modern clients fire secure actions on the edge selected by the
 	-- ActionButtonUseKeyDown cvar; register both so the click always lands
 	btn:RegisterForClicks("AnyDown", "AnyUp")
-	btn:SetAttribute("type", "spell")
+	-- left: the planned cast (greater when planned); right: always a single
+	btn:SetAttribute("type1", "spell")
+	btn:SetAttribute("type2", "spell")
 
 	btn.bg = btn:CreateTexture(nil, "BACKGROUND")
 	btn.bg:SetAllPoints()
@@ -102,7 +104,10 @@ local function CreateButton(index)
 		local blessing = HO.Data.blessings[task.blessingID]
 		GameTooltip:SetText(task.classToken)
 		if task.spellName and task.unitName then
-			GameTooltip:AddLine("next: " .. task.spellName .. " on " .. task.unitName, 1, 1, 1)
+			GameTooltip:AddLine("left: " .. task.spellName .. " on " .. task.unitName, 1, 1, 1)
+			if task.singleSpellName and task.singleSpellName ~= task.spellName then
+				GameTooltip:AddLine("right: " .. task.singleSpellName .. " (single)", 1, 1, 1)
+			end
 		else
 			GameTooltip:AddLine((blessing and (blessing.name or blessing.key) or "?") .. " — all covered", 0.6, 1, 0.6)
 		end
@@ -224,8 +229,10 @@ function Bar.Refresh()
 			index = index + 1
 			local btn = buttons[index]
 			btn.task = task
-			btn:SetAttribute("spell", task.spellName)
-			btn:SetAttribute("unit", task.unit)
+			btn:SetAttribute("spell1", task.spellName)
+			btn:SetAttribute("unit1", task.unit)
+			btn:SetAttribute("spell2", task.singleSpellName)
+			btn:SetAttribute("unit2", task.unit)
 			btn.icon:SetTexture(task.icon)
 			btn.icon:SetDesaturated(task.spellName == nil)
 			local coords = CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[classToken]
@@ -242,8 +249,10 @@ function Bar.Refresh()
 	for i = index + 1, MAX_BUTTONS do
 		buttons[i]:Hide()
 		buttons[i].task = nil
-		buttons[i]:SetAttribute("spell", nil)
-		buttons[i]:SetAttribute("unit", nil)
+		buttons[i]:SetAttribute("spell1", nil)
+		buttons[i]:SetAttribute("unit1", nil)
+		buttons[i]:SetAttribute("spell2", nil)
+		buttons[i]:SetAttribute("unit2", nil)
 	end
 
 	local isPally = select(2, UnitClass("player")) == "PALADIN"

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-07-19
+
+### Changed
+- Auto-assign now scores full buff strength: improvement talents (dominant),
+  then spell rank, then greater-version knowledge — the paladin with the
+  stronger Might gets the Might. Capabilities exchange spell ranks (protocol
+  v3: everyone must update for cross-paladin scoring to work).
+
 ## [0.13.1] - 2026-07-19
 
 ### Fixed

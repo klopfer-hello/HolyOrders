@@ -32,6 +32,20 @@ Comm.specSync = {} -- [fullName] = spec tag, synced overlay (session only, not s
 local me -- own full name, set on login
 local planBuffer = nil -- incoming PLANAPPLY buffer { sender, rows={}, tanks={} }, applied atomically at PE
 
+local UPDATE_URL = "https://github.com/klopfer-hello/HolyOrders/releases"
+
+-- "X.Y.Z" to a comparable number; nil for anything malformed
+local function ParseVersion(v)
+	if type(v) ~= "string" then
+		return nil
+	end
+	local a, b, c = v:match("^(%d+)%.(%d+)%.(%d+)")
+	if not a then
+		return nil
+	end
+	return tonumber(a) * 1000000 + tonumber(b) * 1000 + tonumber(c)
+end
+
 local function IsPaladin()
 	return select(2, UnitClass("player")) == "PALADIN"
 end
@@ -492,6 +506,16 @@ handlers["H"] = function(sender, payload)
 	end
 	Comm.peers[sender] = peer
 	HO.Log("comm", "hello from " .. sender .. " v" .. tostring(version))
+	-- same protocol, but a newer release exists in the group: nudge once per
+	-- session (compatible sync keeps working, this is just an update hint)
+	if not Comm.updateNotified then
+		local theirs, mine = ParseVersion(version), ParseVersion(HO.VERSION)
+		if theirs and mine and theirs > mine then
+			Comm.updateNotified = true
+			HO.Print("a newer HolyOrders (v" .. version .. ") is in your group — you run v"
+				.. HO.VERSION .. "; update: " .. UPDATE_URL)
+		end
+	end
 	-- greet back once and share our state directly with the newcomer — but only
 	-- if we are a paladin, so non-paladin clients never announce a row
 	if not peer.greeted and IsPaladin() then
@@ -790,7 +814,15 @@ HO.RegisterEvent("CHAT_MSG_ADDON", function(prefix, message, _, senderFull)
 		if proto and sender and sender ~= me and not protoWarned[sender] then
 			protoWarned[sender] = true
 			HO.Log("comm", "protocol mismatch from " .. sender .. " (theirs " .. proto .. ", ours " .. PROTO .. ")")
-			HO.Print(sender .. " runs an incompatible HolyOrders version — sync with them is DISABLED until both run the same version")
+			-- say WHO is outdated: the lower protocol number needs the update
+			local theirs, ours = tonumber(proto), tonumber(PROTO)
+			if theirs and ours and theirs > ours then
+				HO.Print("your HolyOrders is OUT OF DATE — sync with " .. sender
+					.. " is DISABLED until you update: " .. UPDATE_URL)
+			else
+				HO.Print(sender .. " runs an outdated HolyOrders — sync with them is DISABLED until they update ("
+					.. UPDATE_URL .. ")")
+			end
 		end
 		return
 	end

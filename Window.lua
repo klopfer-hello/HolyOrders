@@ -200,6 +200,11 @@ local function CellTooltip(cell)
 				GameTooltip:AddLine(string.format(L["remembered preference: %s"], BlessingName(pref)), 0.6, 0.8, 1)
 			end
 		end
+		-- a buff this member requested for themselves (yellow, like the cast bar)
+		local req = HO.Comm and HO.Comm.requests[cell.memberName]
+		if req then
+			GameTooltip:AddLine(string.format(L["requested: %s"], BlessingName(req)), 0.95, 0.85, 0.15)
+		end
 		GameTooltip:AddLine(L["click: next blessing — right-click: clear"], 0.8, 0.8, 0.8)
 	else
 		GameTooltip:SetText(cell.classToken)
@@ -640,9 +645,13 @@ function Window.Refresh()
 					else
 						local isTank = HO.Plan.IsTank(entry.name, entry.tankRole)
 						local spec = HO.db.specCache[entry.name]
+						-- a buff this member requested for themselves: a short yellow
+						-- tag (f2d926 ≈ the cast-bar request colour), matching the theme
+						local req = HO.Comm and HO.Comm.requests[entry.name]
 						mrow.label.text:SetText(short
 							.. (spec and (" |cff9d9d9d(" .. spec .. ")|r") or "")
-							.. (isTank and (" |cffff6060" .. L["[tank]"] .. "|r") or ""))
+							.. (isTank and (" |cffff6060" .. L["[tank]"] .. "|r") or "")
+							.. (req and (" |cfff2d926" .. string.format(L["requested: %s"], BlessingName(req)) .. "|r") or ""))
 						mrow.label:SetScript("OnClick", function(_, mouseBtn)
 							if mouseBtn == "RightButton" then
 								if HO.Comm and not HO.Comm.CanFlagTank(entry.name) then

@@ -68,14 +68,17 @@ function MMB.Create()
 			HO.Bar.ToggleForceRebuff()
 		elseif IsShiftKeyDown() then
 			HO.Options.Toggle()
+		elseif select(2, UnitClass("player")) == "PALADIN" then
+			HO.Window.Toggle() -- paladins: the assignment window
 		else
-			HO.Window.Toggle()
+			HO.Request.Toggle() -- everyone else: request a buff for themselves
 		end
 	end)
 	btn:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
 		GameTooltip:SetText("HolyOrders")
-		GameTooltip:AddLine(L["click: assignment window"], 1, 1, 1)
+		local isPally = select(2, UnitClass("player")) == "PALADIN"
+		GameTooltip:AddLine(isPally and L["click: assignment window"] or L["click: buff request"], 1, 1, 1)
 		GameTooltip:AddLine(L["right-click: force rebuff"], 1, 1, 1)
 		GameTooltip:AddLine(L["shift-click: options"], 1, 1, 1)
 		GameTooltip:AddLine(L["drag: move this button"], 0.8, 0.8, 0.8)

@@ -588,6 +588,42 @@ HO.commands["aura"] = function(rest)
 	HO.Print("aura: " .. (HO.Data.AuraName(id) or ("#" .. id)))
 end
 
+-- buff request (available to everyone, non-paladins included) -----------------
+
+HO.commands["request"] = function(rest)
+	local arg = rest:match("^%s*(.-)%s*$") -- trim surrounding whitespace
+	if arg == "" then
+		HO.Request.Toggle()
+		return
+	end
+	local lower = arg:lower()
+	if lower == "clear" or lower == "none" or lower == "0" then
+		HO.Comm.SendRequest(0)
+		HO.Print("buff request cleared")
+		return
+	end
+	-- resolve by number (= blessing id) or case-insensitive name prefix
+	local id
+	local num = tonumber(arg)
+	if num and HO.Data.blessings[num] then
+		id = num
+	else
+		for bid, blessing in ipairs(HO.Data.blessings) do
+			local name = blessing.name or blessing.key
+			if name and name:lower():sub(1, #lower) == lower then
+				id = bid
+				break
+			end
+		end
+	end
+	if not id then
+		HO.Print("no blessing matches '" .. arg .. "' — use a name or 1-" .. HO.Data.NUM_BLESSINGS .. " (or 'clear')")
+		return
+	end
+	HO.Comm.SendRequest(id)
+	HO.Print("requesting " .. BlessingLabel(id) .. " for yourself")
+end
+
 -- help ------------------------------------------------------------------------
 
 -- diagnostic/experimental commands, kept out of the default /ho help listing
@@ -608,6 +644,7 @@ local DESC = {
 	override = "set a per-player blessing override",
 	prefs = "list or clear remembered member blessings",
 	tank = "toggle a member's tank flag",
+	request = "request a blessing for yourself (non-paladins too)",
 	aura = "set or show your paladin aura",
 	spec = "tag a member's spec for the planner",
 	win = "toggle the assignment window",

@@ -18,6 +18,7 @@ Comm.lua
 Engine.lua
 Bar.lua
 Window.lua
+Request.lua
 Options.lua
 MinimapButton.lua
 Inspect.lua

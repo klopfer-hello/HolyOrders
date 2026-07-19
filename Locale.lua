@@ -89,9 +89,18 @@ L["click: next aura — right-click: clear"] = "Klick: nächste Aura — Rechtsk
 
 -- minimap button
 L["click: assignment window"] = "Klick: Zuteilungsfenster"
+L["click: buff request"] = "Klick: Segenswunsch"
 L["right-click: force rebuff"] = "Rechtsklick: Zwangs-Rebuff"
 L["shift-click: options"] = "Shift-Klick: Optionen"
 L["drag: move this button"] = "Ziehen: Button verschieben"
+
+-- buff requests
+L["Buff Request"] = "Segenswunsch"
+L["requesting: %s"] = "Wunsch: %s"
+L["no request"] = "kein Wunsch"
+L["requested: %s"] = "gewünscht: %s"
+L["Clear"] = "Leeren"
+L["click a blessing to request it for yourself"] = "Klicke einen Segen, um ihn für dich zu erbitten"
 
 -- frequent chat messages
 L["force rebuff cancelled"] = "Zwangs-Rebuff abgebrochen"

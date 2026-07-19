@@ -14,6 +14,12 @@ local HANDLE_WIDTH = 12
 local MAX_BUTTONS = 9
 local UPDATE_INTERVAL = 1.0
 local NONE_ICON = "Interface\\Buttons\\UI-GroupLoot-Pass-Up" -- "no aura" placeholder (matches the window)
+-- colour language for status borders: green = everyone has their assigned buff,
+-- red = someone in range is missing it, amber = only expiring/out-of-range, and
+-- YELLOW = a member requested a (different) buff that is not fulfilled yet.
+-- Precedence on the class button: red missing > yellow request > amber > green
+-- (a genuine missing buff is more urgent than a preference request).
+local REQUEST_R, REQUEST_G, REQUEST_B = 0.95, 0.85, 0.15 -- yellow: an unmet buff request
 
 local CLASS_ORDER = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
 
@@ -158,6 +164,17 @@ local function SetButtonBorder(btn, r, g, b)
 	end
 end
 
+-- does any member of this class have an UNMET request (a requested blessing that
+-- differs from what this paladin assigns them)? Read-only over the display list.
+local function ClassHasUnmetRequest(classToken)
+	for _, m in ipairs(HO.Engine.ClassMembers(classToken)) do
+		if m.requestID and m.blessingID ~= m.requestID then
+			return true
+		end
+	end
+	return false
+end
+
 -- button visuals that are safe to update in combat
 local function UpdateButtonTexts(btn, task)
 	btn.count:SetText(task.missing > 0 and tostring(task.missing) or "")
@@ -165,12 +182,22 @@ local function UpdateButtonTexts(btn, task)
 	-- in-range missing counts toward "red"; a purely out-of-range gap is amber,
 	-- since it is not something you can act on right now
 	local inRangeMissing = task.missing - (task.outOfRange or 0)
+	-- yellow marker: any class member wants a buff this paladin isn't giving them
+	local unmetRequest = ClassHasUnmetRequest(task.classToken)
 	if task.noneAssigned then
 		btn.bg:SetColorTexture(0, 0, 0, 0.65)
-		SetButtonBorder(btn) -- no assignment: no status
+		-- even a none-assigned class can carry a request the paladin should notice
+		if unmetRequest then
+			SetButtonBorder(btn, REQUEST_R, REQUEST_G, REQUEST_B) -- yellow
+		else
+			SetButtonBorder(btn) -- no assignment: no status
+		end
 	elseif inRangeMissing > 0 then
 		btn.bg:SetColorTexture(0.55, 0.10, 0.10, 0.85)
-		SetButtonBorder(btn, 0.85, 0.15, 0.15) -- red
+		SetButtonBorder(btn, 0.85, 0.15, 0.15) -- red (outranks a request)
+	elseif unmetRequest then
+		btn.bg:SetColorTexture(0, 0, 0, 0.65)
+		SetButtonBorder(btn, REQUEST_R, REQUEST_G, REQUEST_B) -- yellow: unmet request
 	elseif task.expiring > 0 or (task.outOfRange or 0) > 0 then
 		btn.bg:SetColorTexture(0.55, 0.45, 0.05, 0.85)
 		SetButtonBorder(btn, 0.90, 0.70, 0.10) -- amber
@@ -265,6 +292,7 @@ local function UpdateRowStatus(row, m)
 	row.blessingID = m.blessingID
 	row.hasBuff = m.hasBuff
 	row.inRange = m.inRange
+	row.requestID = m.requestID
 	local blessing = m.blessingID and HO.Data.blessings[m.blessingID]
 	row.icon:SetTexture((blessing and blessing.icon) or NONE_ICON)
 	local short = m.name:match("^([^%-]+)") or m.name
@@ -295,6 +323,25 @@ local function UpdateRowStatus(row, m)
 		SetRowBorder(row) -- status unknown → neutral
 		row.icon:SetDesaturated(false)
 		row.icon:SetAlpha(1)
+	end
+	-- request badge (right side): the requested blessing's icon. Dimmed/greenish
+	-- once honoured (assigned == requested), full colour while still unmet. An
+	-- unmet request also paints a YELLOW row border, overriding the green/red
+	-- status border above so the paladin notices which member wants a buff.
+	if m.requestID then
+		local reqBlessing = HO.Data.blessings[m.requestID]
+		row.reqBadge:SetTexture((reqBlessing and reqBlessing.icon) or NONE_ICON)
+		if m.blessingID == m.requestID then
+			row.reqBadge:SetVertexColor(0.4, 1, 0.4) -- satisfied: greenish
+			row.reqBadge:SetAlpha(0.7)
+		else
+			row.reqBadge:SetVertexColor(1, 1, 1)
+			row.reqBadge:SetAlpha(1)
+			SetRowBorder(row, REQUEST_R, REQUEST_G, REQUEST_B) -- yellow: unmet request
+		end
+		row.reqBadge:Show()
+	else
+		row.reqBadge:Hide()
 	end
 end
 
@@ -383,8 +430,16 @@ local function AcquireFlyoutRow(index)
 	row.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
 	row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	row.name:SetPoint("LEFT", row.icon, "RIGHT", 4, 0)
-	row.name:SetPoint("RIGHT", -3, 0)
+	-- reserve room on the right for the request badge (shown only when requested)
+	row.name:SetPoint("RIGHT", -(FLYOUT_ICON + 4), 0)
 	row.name:SetJustifyH("LEFT")
+	-- request badge: the requested blessing's icon on the row's right side, kept
+	-- distinct from the assigned-blessing icon on the left. Non-secure texture.
+	row.reqBadge = row:CreateTexture(nil, "OVERLAY")
+	row.reqBadge:SetSize(FLYOUT_ICON, FLYOUT_ICON)
+	row.reqBadge:SetPoint("RIGHT", -2, 0)
+	row.reqBadge:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+	row.reqBadge:Hide()
 	-- four thin edge textures form the status border (recoloured per refresh)
 	row.borders = {}
 	local top = row:CreateTexture(nil, "OVERLAY")
@@ -450,6 +505,14 @@ local function AcquireFlyoutRow(index)
 			end
 		else
 			GameTooltip:AddLine(L["no buff assigned"], 0.8, 0.8, 0.8)
+		end
+		if self.requestID then
+			local reqName = FlyoutBlessingName(self.requestID)
+			if self.blessingID == self.requestID then
+				GameTooltip:AddLine(string.format(L["requested: %s"], reqName), 0.6, 1, 0.6) -- honoured
+			else
+				GameTooltip:AddLine(string.format(L["requested: %s"], reqName), REQUEST_R, REQUEST_G, REQUEST_B)
+			end
 		end
 		GameTooltip:AddLine(L["left-click: cast — wheel: change — right-click: clear"], 0.8, 0.8, 0.8)
 		GameTooltip:Show()

@@ -29,6 +29,7 @@ local CODE_MODE = { a = "auto", g = "greater", n = "normal" }
 Comm.peers = {} -- [fullName] = { version, openEdit, caps = {[id]={known,greater,talent}}, greeted }
 Comm.suspended = false -- true while the planner bulk-edits (PLANAPPLY follows)
 Comm.specSync = {} -- [fullName] = spec tag, synced overlay (session only, not saved)
+Comm.requests = {} -- [fullName] = blessingID: buff requests received this session (own reflected too); never saved
 
 local me -- own full name, set on login
 local planBuffer = nil -- incoming PLANAPPLY buffer { sender, rows={}, tanks={} }, applied atomically at PE
@@ -983,6 +984,47 @@ handlers["AB"] = function(sender, payload)
 	end
 end
 
+-- buff requests ---------------------------------------------------------------
+-- Any player (paladins included, but especially non-paladins who are otherwise
+-- passive) may request a single blessing for THEMSELVES. The message is always
+-- about the sender and carries only the id: RQ:<id> (0 = clear). Low-churn and
+-- last-writer-wins, so it needs no revision. This is the one message a
+-- non-paladin client ever sends.
+function Comm.SendRequest(id)
+	if not me then
+		return
+	end
+	id = tonumber(id) or 0
+	if id ~= 0 and not HO.Data.blessings[id] then
+		return -- unknown blessing id: ignore
+	end
+	-- persist the local player's own request (nil clears); survives /reload and
+	-- is re-announced from the roster hook so late-joining paladins still see it
+	HO.db.myRequest = (id ~= 0) and id or nil
+	-- reflect it locally too, so a self-covering paladin sees their own badge
+	Comm.requests[me] = HO.db.myRequest
+	if IsInGroup() then
+		Send("RQ:" .. id)
+	end
+	if HO.Request then
+		HO.Request.Refresh()
+	end
+	RefreshUI()
+end
+
+-- a request is always about its sender; store/clear it and validate the id
+handlers["RQ"] = function(sender, payload)
+	local id = tonumber(payload) or 0
+	if id ~= 0 and not HO.Data.blessings[id] then
+		return -- unknown blessing id: reject
+	end
+	local new = (id ~= 0) and id or nil
+	if Comm.requests[sender] ~= new then
+		Comm.requests[sender] = new
+		RefreshUI()
+	end
+end
+
 local protoWarned = {}
 
 -- mutating message types require the sender to be a current group member; when
@@ -994,6 +1036,7 @@ local MUTATING = {
 	NS = true, LR = true, LL = true, ST = true,
 	MP = true, MB = true,
 	AU = true, AB = true,
+	RQ = true,
 	FG = true,
 }
 
@@ -1113,6 +1156,12 @@ local function PruneDeparted()
 			fragBuffers[name] = nil
 		end
 	end
+	-- a leaver's buff request must not linger on our screen (own is kept)
+	for name in pairs(Comm.requests) do
+		if departed(name) then
+			Comm.requests[name] = nil
+		end
+	end
 end
 
 HO.RegisterEvent("PLAYER_LOGIN", function()
@@ -1131,6 +1180,12 @@ HO.RegisterEvent("PLAYER_LOGIN", function()
 				Comm.SendKnownSpecTags()
 				Comm.SendKnownMemberPrefs()
 				Comm.SendKnownAuras()
+			end
+			-- re-announce our own buff request so paladins who just joined see
+			-- it again; runs for non-paladins too (the one message they send),
+			-- so a requester who relogs or regroups is not forgotten
+			if HO.db and HO.db.myRequest and IsInGroup() then
+				Comm.SendRequest(HO.db.myRequest)
 			end
 		end
 	end)

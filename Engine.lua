@@ -201,6 +201,9 @@ function Engine.Update()
 				isPet = entry.isPet or nil,
 				owner = entry.owner,
 				blessingID = (blessingID and blessingID > 0) and blessingID or nil,
+				-- display-only: a buff this member requested for themselves (nil
+				-- for pets, which never send requests); never affects a cast
+				requestID = HO.Comm and HO.Comm.requests[entry.name] or nil,
 			}
 			Engine.classMembers[poolClass] = Engine.classMembers[poolClass] or {}
 			table.insert(Engine.classMembers[poolClass], member)

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-07-19
+
+### Added
+- German localization (deDE): window, bar, options, minimap tooltips and the
+  frequent chat messages; slash-command output stays English.
+- Mouse wheel over a cast bar button cycles your class assignment (out of
+  combat); the change syncs to the group and the assignment window instantly.
+
 ## [0.12.0] - 2026-07-19
 
 ### Added

@@ -257,6 +257,10 @@ HO.commands["bar"] = function(rest)
 	end
 end
 
+HO.commands["rebuff"] = function()
+	HO.Bar.ToggleForceRebuff()
+end
+
 -- auto-planner ----------------------------------------------------------------
 
 HO.commands["auto"] = function()

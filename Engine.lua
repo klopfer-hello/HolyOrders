@@ -8,8 +8,33 @@ HO.Engine = Engine
 
 local EXPIRING_SOON = 120 -- seconds left that count as "needs a refresh"
 local MAX_BUFFS = 40
+local FRESH_AGE = 120 -- force mode: buffs older than this are re-cast
+local FORCE_DURATION = 300 -- force mode safety timeout
 
 Engine.tasks = {} -- [classToken] = task table, built in Update()
+Engine.forceUntil = nil
+
+-- force-rebuff sweep: pre-pull refresh of everything that is not fresh;
+-- ends automatically when all assigned buffs are fresh, or after timeout
+function Engine.StartForceRebuff()
+	Engine.forceUntil = GetTime() + FORCE_DURATION
+	HO.Log("engine", "force rebuff started")
+end
+
+function Engine.StopForceRebuff()
+	Engine.forceUntil = nil
+	HO.Log("engine", "force rebuff stopped")
+end
+
+function Engine.ForceActive()
+	if Engine.forceUntil then
+		if GetTime() < Engine.forceUntil then
+			return true
+		end
+		Engine.forceUntil = nil
+	end
+	return false
+end
 
 -- which blessing target `entry` should get from me: override wins, then the
 -- class assignment
@@ -33,18 +58,18 @@ local function HasBlessing(unit, blessingID)
 		return false, nil
 	end
 	for i = 1, MAX_BUFFS do
-		local name, _, _, _, _, expirationTime = UnitBuff(unit, i)
+		local name, _, _, _, duration, expirationTime = UnitBuff(unit, i)
 		if not name then
 			break
 		end
 		if name == blessing.name or name == blessing.greaterName then
 			if expirationTime and expirationTime > 0 then
-				return true, expirationTime - GetTime()
+				return true, expirationTime - GetTime(), duration
 			end
-			return true, nil
+			return true, nil, nil
 		end
 	end
-	return false, nil
+	return false, nil, nil
 end
 
 local function Castable(entry)
@@ -99,9 +124,10 @@ function Engine.Update()
 		end
 		local greater = assign and UseGreater(assign, eligiblePlayers) or false
 
+		local force = Engine.ForceActive()
 		local missing, expiring, minRemaining = {}, {}, nil
 		for _, item in ipairs(pool) do
-			local has, remaining = HasBlessing(item.entry.unit, item.blessingID)
+			local has, remaining, duration = HasBlessing(item.entry.unit, item.blessingID)
 			item.remaining = remaining
 			if not has then
 				if Castable(item.entry) then
@@ -111,7 +137,8 @@ function Engine.Update()
 				if not minRemaining or remaining < minRemaining then
 					minRemaining = remaining
 				end
-				if remaining < EXPIRING_SOON and Castable(item.entry) then
+				local stale = force and duration and duration > 0 and (duration - remaining) > FRESH_AGE
+				if (remaining < EXPIRING_SOON or stale) and Castable(item.entry) then
 					table.insert(expiring, item)
 				end
 			end
@@ -153,6 +180,22 @@ function Engine.Update()
 				minRemaining = minRemaining,
 				icon = blessing and blessing.icon,
 			}
+		end
+	end
+
+	-- force-rebuff sweep ends itself once every assigned buff is fresh
+	if Engine.forceUntil and Engine.ForceActive() then
+		local pending = false
+		for _, task in pairs(Engine.tasks) do
+			if task.missing > 0 or task.expiring > 0 then
+				pending = true
+				break
+			end
+		end
+		if not pending then
+			Engine.forceUntil = nil
+			HO.Log("engine", "force rebuff complete")
+			HO.Print("force rebuff complete — all assigned buffs are fresh")
 		end
 	end
 end

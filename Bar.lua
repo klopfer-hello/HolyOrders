@@ -147,10 +147,16 @@ function Bar.Create()
 		bar:StopMovingOrSizing()
 		SavePosition()
 	end)
+	handle:SetScript("OnMouseUp", function(_, mouseButton)
+		if mouseButton == "RightButton" then
+			Bar.ToggleForceRebuff()
+		end
+	end)
 	handle:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
 		GameTooltip:SetText("HolyOrders")
 		GameTooltip:AddLine(BarOptions().locked and "locked — /ho bar unlock" or "drag to move — /ho bar lock", 1, 1, 1)
+		GameTooltip:AddLine("right-click: force rebuff (pre-pull refresh)", 1, 1, 1)
 		GameTooltip:Show()
 	end)
 	handle:SetScript("OnLeave", function()
@@ -167,11 +173,29 @@ function Bar.Create()
 	bar:Hide()
 end
 
+function Bar.ToggleForceRebuff()
+	if HO.Engine.ForceActive() then
+		HO.Engine.StopForceRebuff()
+		HO.Print("force rebuff cancelled")
+	else
+		HO.Engine.StartForceRebuff()
+		HO.Print("force rebuff: refreshing everything older than 2 minutes (ends when all fresh)")
+	end
+	Bar.Refresh()
+end
+
 function Bar.Refresh()
 	if not bar or not HO.db then
 		return
 	end
 	HO.Engine.Update()
+	if handle then
+		if HO.Engine.ForceActive() then
+			handle.tex:SetColorTexture(0.85, 0.20, 0.10, 0.80)
+		else
+			handle.tex:SetColorTexture(0.94, 0.78, 0.09, 0.55)
+		end
+	end
 
 	if InCombatLockdown() then
 		-- attributes and shown-state are frozen; only refresh texts of the

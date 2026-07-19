@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   soonest expiring; override and tank rules applied; greater vs normal by mode).
 - Secure cast bar: movable, lockable, per-duty buttons with counts and timers;
   combat-consistent display. `/ho bar lock|unlock|show|hide|reset`.
+- Force rebuff (`/ho rebuff` or right-click the bar handle): pre-pull sweep
+  that re-casts every assigned buff older than 2 minutes; ends automatically
+  when everything is fresh. Handle glows red while active.
+- Addon-list icon (`IconTexture`) and README banner artwork.
 
 ### Fixed
 - Unicode arrows replaced with ASCII in chat output (rendered as boxes).

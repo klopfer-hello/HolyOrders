@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-07-20
+
+Sync protocol stays v4. The buff-request message now carries an ordered list;
+a 0.20.x client simply shows "no request" from a 0.21 requester (graceful) —
+otherwise fully compatible.
+
+### Added
+- Ranked buff requests: request a prioritised *list* of blessings for yourself
+  instead of a single one. The request window is now a ranked picker — click
+  blessings in priority order (each shows a rank badge), click again to remove.
+  The list is shown in the assignment window as mini blessing icons with rank
+  badges on each member's row (the full list is in the member tooltip), and the
+  auto-planner honours your highest castable preference, still behind tank
+  protection and eligibility.
+- Opt-in "Share assignments with legacy blessing addons": broadcasts your own
+  blessing plan in the wire format of an older third-party blessing addon, so
+  raiders still running it see your assignments during a transition. Off by
+  default; emit-only (it never reads their state).
+
+### Changed
+- The buff-request window now wears the shared panel skin (dark rounded panel
+  with a thin gold border, gold title and buttons), matching the assignment
+  window and fly-out, with legible gold rank badges.
+
+### Fixed
+- Long member/class row labels no longer overflow into the cell columns — row
+  labels are bounded to their area and truncate instead of spilling over.
+- A half-constructed assignment window (if creation is interrupted) no longer
+  cascades into repeated errors on every refresh.
+
 ## [0.20.0] - 2026-07-20
 
 Sync protocol stays v4 — this release is compatible with 0.17.x–0.19.x. The new

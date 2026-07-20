@@ -5,16 +5,36 @@ local MMB = {}
 HO.MinimapButton = MMB
 local L = HO.L
 
-local RADIUS = 80
+local EDGE_MARGIN = 5 -- button centre offset beyond the minimap ring
 local btn
 
 local function Opts()
 	return HO.Options.Ensure().minimap
 end
 
+-- place the button on the minimap ring. The radius is taken from the minimap's
+-- actual half-width/height, so it hugs the edge on a resized (larger/smaller)
+-- minimap instead of a fixed radius that only fit the default 140 px map (and fell
+-- inside a bigger one). Square minimaps (some UI addons expose GetMinimapShape)
+-- clamp to the square edge instead of floating inside on the diagonals. This is
+-- the standard minimap-button positioning math, authored in our own style.
 local function UpdatePosition()
+	local mm = _G.Minimap
 	local angle = math.rad(Opts().angle or 200)
-	btn:SetPoint("CENTER", _G.Minimap, "CENTER", math.cos(angle) * RADIUS, math.sin(angle) * RADIUS)
+	local x, y = math.cos(angle), math.sin(angle)
+	local w = (mm:GetWidth() / 2) + EDGE_MARGIN
+	local h = (mm:GetHeight() / 2) + EDGE_MARGIN
+	local shape = (GetMinimapShape and GetMinimapShape()) or "ROUND"
+	if shape == "ROUND" then
+		x, y = x * w, y * h -- ellipse (a circle when the map is square-framed)
+	else
+		-- non-round: project onto the square edge, clamped to the half-extents
+		local dw = math.sqrt(2 * w * w) - 10
+		local dh = math.sqrt(2 * h * h) - 10
+		x = math.max(-w, math.min(x * dw, w))
+		y = math.max(-h, math.min(y * dh, h))
+	end
+	btn:SetPoint("CENTER", mm, "CENTER", x, y)
 end
 
 function MMB.UpdateShown()
@@ -88,6 +108,11 @@ function MMB.Create()
 		GameTooltip:Hide()
 	end)
 	UpdatePosition()
+	-- re-place shortly after login: minimap-shape / resizer addons may finish
+	-- loading after us and change the map's size, which moves the ring
+	if C_Timer and C_Timer.After then
+		C_Timer.After(2, UpdatePosition)
+	end
 	MMB.UpdateShown()
 end
 

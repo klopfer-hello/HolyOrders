@@ -17,6 +17,7 @@ Roster.lua
 Plan.lua
 Planner.lua
 Comm.lua
+InteropBridge.lua
 Engine.lua
 Bar.lua
 Window.lua

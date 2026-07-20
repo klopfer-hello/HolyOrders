@@ -110,6 +110,9 @@ function Plan.SetClassAssignment(paladin, classToken, blessingID, mode)
 	if HO.Comm then
 		HO.Comm.OnClassEdited(paladin, classToken)
 	end
+	if HO.Interop then
+		HO.Interop.OnLocalPlanChanged(paladin)
+	end
 end
 
 -- explicit "none" for a class: a placeholder marker (no id) that keeps a visible,
@@ -122,6 +125,9 @@ function Plan.SetClassNone(paladin, classToken)
 	MarkDirty(plan)
 	if HO.Comm then
 		HO.Comm.OnClassEdited(paladin, classToken)
+	end
+	if HO.Interop then
+		HO.Interop.OnLocalPlanChanged(paladin)
 	end
 end
 
@@ -159,6 +165,9 @@ function Plan.SetPlayerOverride(paladin, targetName, blessingID)
 	MarkDirty(plan)
 	if HO.Comm then
 		HO.Comm.OnOverrideEdited(paladin, targetName)
+	end
+	if HO.Interop then
+		HO.Interop.OnLocalPlanChanged(paladin)
 	end
 end
 

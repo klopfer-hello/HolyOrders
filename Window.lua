@@ -23,6 +23,10 @@ local MAX_WIN_H = 700 -- height clamp; taller rosters scroll via the mouse wheel
 local BOTTOM_PAD = 48 -- reserved space under the last row for the hint lines + corner crest
 local FIRST_ROW_OFFSET = 20 -- gap between the column headers and the first row
 local ICON_SIZE = 24 -- cell icon size (rows grow with it so icons don't overflow)
+-- mini request-preference icons on a member row (top N shown, full list in tooltip)
+local PREF_ICON = 16
+local PREF_STEP = 18
+local MAX_ROW_PREFS = 3
 
 local CLASS_ORDER = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
 -- cast-mode tag shown on a cell: A auto, G great (greater), S small (10-min
@@ -249,10 +253,14 @@ local function CellTooltip(cell)
 				GameTooltip:AddLine(string.format(L["remembered preference: %s"], BlessingName(pref)), 0.6, 0.8, 1)
 			end
 		end
-		-- a buff this member requested for themselves (yellow, like the cast bar)
+		-- this member's ranked buff requests (yellow, like the cast bar)
 		local req = HO.Comm and HO.Comm.requests[cell.memberName]
-		if req then
-			GameTooltip:AddLine(string.format(L["requested: %s"], BlessingName(req)), 0.95, 0.85, 0.15)
+		if type(req) == "table" and #req > 0 then
+			local names = {}
+			for i, id in ipairs(req) do
+				names[i] = i .. ". " .. BlessingName(id)
+			end
+			GameTooltip:AddLine(string.format(L["requested: %s"], table.concat(names, "  ")), 0.95, 0.85, 0.15, true)
 		end
 		GameTooltip:AddLine(L["click: next blessing — right-click: clear"], 0.8, 0.8, 0.8)
 	else
@@ -342,10 +350,52 @@ local function AcquireRow(pool, index, height, labelIndent)
 		row.label.text = row.label:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 		row.label.text:SetPoint("LEFT", 2, 0)
 		row.label.text:SetJustifyH("LEFT")
+		-- bound to the label area (never into the cell columns) and truncate instead
+		-- of wrapping; member rows narrow this further to make room for pref icons
+		row.label.defaultTextWidth = NAME_W - 12 - labelIndent
+		row.label.text:SetWidth(row.label.defaultTextWidth)
+		row.label.text:SetWordWrap(false)
 		pool[index] = row
 	end
 	row:SetHeight(height)
 	return row
+end
+
+-- a member's ranked buff-request icons, right-aligned in the label area (rank 1
+-- leftmost) with a small priority badge on each. Only the top MAX_ROW_PREFS are
+-- drawn on the row; the tooltip lists the whole chain. Returns the pixel width the
+-- strip consumes so the name text can be narrowed to never run under it.
+local function RenderMemberPrefs(mrow, list)
+	mrow.prefIcons = mrow.prefIcons or {}
+	local count = math.min(list and #list or 0, MAX_ROW_PREFS)
+	for i = 1, count do
+		local w = mrow.prefIcons[i]
+		if not w then
+			w = {}
+			w.tex = mrow:CreateTexture(nil, "OVERLAY")
+			w.tex:SetSize(PREF_ICON, PREF_ICON)
+			w.tex:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+			w.rank = mrow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+			w.rank:SetPoint("BOTTOMRIGHT", w.tex, "BOTTOMRIGHT", 1, -1)
+			w.rank:SetDrawLayer("OVERLAY", 2)
+			local f, s = w.rank:GetFont()
+			w.rank:SetFont(f, (s or 10), "THICKOUTLINE")
+			mrow.prefIcons[i] = w
+		end
+		local blessing = HO.Data.blessings[list[i]]
+		w.tex:SetTexture((blessing and blessing.icon) or EMPTY_SLOT)
+		w.tex:ClearAllPoints()
+		local x = (NAME_W - 4) - count * PREF_STEP + (i - 1) * PREF_STEP
+		w.tex:SetPoint("LEFT", mrow, "LEFT", x, 0)
+		w.rank:SetText(tostring(i))
+		w.tex:Show()
+		w.rank:Show()
+	end
+	for i = count + 1, #mrow.prefIcons do
+		mrow.prefIcons[i].tex:Hide()
+		mrow.prefIcons[i].rank:Hide()
+	end
+	return count > 0 and (count * PREF_STEP + 4) or 0
 end
 
 local function RowCell(row, colIndex, clickHandler)
@@ -793,13 +843,9 @@ function Window.Refresh()
 					else
 						local isTank = HO.Plan.IsTank(entry.name, entry.tankRole)
 						local spec = HO.db.specCache[entry.name]
-						-- a buff this member requested for themselves: a short yellow
-						-- tag (f2d926 ≈ the cast-bar request colour), matching the theme
-						local req = HO.Comm and HO.Comm.requests[entry.name]
 						mrow.label.text:SetText(short
 							.. (spec and (" |cff9d9d9d(" .. spec .. ")|r") or "")
-							.. (isTank and (" |cffff6060" .. L["[tank]"] .. "|r") or "")
-							.. (req and (" |cfff2d926" .. string.format(L["requested: %s"], BlessingName(req)) .. "|r") or ""))
+							.. (isTank and (" |cffff6060" .. L["[tank]"] .. "|r") or ""))
 						mrow.label:SetScript("OnClick", function(_, mouseBtn)
 							if mouseBtn == "RightButton" then
 								if HO.Comm and not HO.Comm.CanFlagTank(entry.name) then
@@ -826,6 +872,11 @@ function Window.Refresh()
 							RefreshAll()
 						end)
 					end
+					-- ranked request icons (pets never request); narrow the name text
+					-- so it never runs under the strip
+					local prefList = (not entry.isPet) and HO.Comm and HO.Comm.requests[entry.name] or nil
+					local prefWidth = RenderMemberPrefs(mrow, prefList)
+					mrow.label.text:SetWidth((mrow.label.defaultTextWidth or (NAME_W - 12 - LABEL_INDENT)) - prefWidth)
 					mrow.label:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 					for c = 1, numCols do
 						local cell = RowCell(mrow, c, MemberCellClick)

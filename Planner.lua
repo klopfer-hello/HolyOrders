@@ -46,23 +46,33 @@ end
 -- the planner respects separately
 function Planner.ResolvePreference(name, classToken, isTank)
 	if isTank then
-		return { KINGS } -- tank protection beats any liking
+		return { KINGS } -- tank protection beats any liking or request
 	end
 	local prefs = HO.db.prefs[classToken] or DEFAULT_PREFS[classToken]
 	local spec = name and HO.db.specCache[name]
 	local chain = (prefs and ((spec and prefs[spec]) or prefs.default)) or { KINGS }
-	-- a remembered member liking comes first; the spec/default chain follows as
-	-- fallback (a duplicate of the liking is dropped). Downstream FirstCastablePref
-	-- / step-4 logic then picks the liking when castable and falls back otherwise.
-	local liking = HO.Plan and HO.Plan.MemberPref and HO.Plan.MemberPref(name)
-	if not liking then
-		return chain
-	end
-	local result = { liking }
-	for _, id in ipairs(chain) do
-		if id ~= liking then
-			table.insert(result, id)
+	-- ordered chain, highest priority first, duplicates dropped keeping the earliest:
+	--   1) the member's own ranked buff requests (their explicit wish)
+	--   2) a remembered member liking (a paladin's earlier manual override)
+	--   3) the spec/default class chain
+	-- Downstream FirstCastablePref / step-4 logic still filters each by eligibility
+	-- and castability, so an ineligible or unavailable preference is skipped.
+	local result, seen = {}, {}
+	local function push(id)
+		if id and not seen[id] then
+			seen[id] = true
+			result[#result + 1] = id
 		end
+	end
+	local requests = HO.Comm and HO.Comm.requests and HO.Comm.requests[name]
+	if type(requests) == "table" then
+		for _, id in ipairs(requests) do
+			push(id)
+		end
+	end
+	push(HO.Plan and HO.Plan.MemberPref and HO.Plan.MemberPref(name))
+	for _, id in ipairs(chain) do
+		push(id)
 	end
 	return result
 end

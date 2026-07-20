@@ -41,6 +41,13 @@ function Engine.ForceActive()
 	return false
 end
 
+-- a member's top-ranked buff request (highest priority), or nil. requests are an
+-- ordered list; the cast bar / fly-out badge shows only the first
+local function TopRequest(name)
+	local r = HO.Comm and HO.Comm.requests[name]
+	return (type(r) == "table") and r[1] or nil
+end
+
 -- which blessing target `entry` should get from me: override wins, then the
 -- class assignment
 -- is this pet buffed at all, per the owner-class settings?
@@ -201,9 +208,9 @@ function Engine.Update()
 				isPet = entry.isPet or nil,
 				owner = entry.owner,
 				blessingID = (blessingID and blessingID > 0) and blessingID or nil,
-				-- display-only: a buff this member requested for themselves (nil
-				-- for pets, which never send requests); never affects a cast
-				requestID = HO.Comm and HO.Comm.requests[entry.name] or nil,
+				-- display-only: the member's top-ranked buff request (nil for pets,
+				-- which never send requests); never affects a cast
+				requestID = TopRequest(entry.name),
 			}
 			Engine.classMembers[poolClass] = Engine.classMembers[poolClass] or {}
 			table.insert(Engine.classMembers[poolClass], member)

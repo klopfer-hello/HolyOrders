@@ -29,7 +29,7 @@ local CODE_MODE = { a = "auto", g = "greater", n = "normal" }
 Comm.peers = {} -- [fullName] = { version, openEdit, caps = {[id]={known,greater,talent}}, greeted }
 Comm.suspended = false -- true while the planner bulk-edits (PLANAPPLY follows)
 Comm.specSync = {} -- [fullName] = spec tag, synced overlay (session only, not saved)
-Comm.requests = {} -- [fullName] = blessingID: buff requests received this session (own reflected too); never saved
+Comm.requests = {} -- [fullName] = { blessingID, ... } ordered priority list; own reflected too; never saved
 
 local me -- own full name, set on login
 local planBuffer = nil -- incoming PLANAPPLY buffer { sender, rows={}, tanks={} }, applied atomically at PE
@@ -986,25 +986,43 @@ end
 
 -- buff requests ---------------------------------------------------------------
 -- Any player (paladins included, but especially non-paladins who are otherwise
--- passive) may request a single blessing for THEMSELVES. The message is always
--- about the sender and carries only the id: RQ:<id> (0 = clear). Low-churn and
--- last-writer-wins, so it needs no revision. This is the one message a
--- non-paladin client ever sends.
-function Comm.SendRequest(id)
+-- passive) may request blessings for THEMSELVES, as an ordered priority list.
+-- The message is always about the sender: RQ:<id,id,...> ("0" or empty = clear).
+-- Low-churn and last-writer-wins, so it needs no revision. This is the one
+-- message a non-paladin client ever sends.
+Comm.REQUEST_MAX = 6 -- at most one entry per blessing
+
+-- validate + copy an ordered request list: keep known blessing ids in priority
+-- order, drop duplicates (keeping the earliest) and cap the length
+local function NormalizeRequests(ids)
+	if type(ids) == "number" then
+		ids = { ids }
+	end
+	local out, seen = {}, {}
+	if type(ids) == "table" then
+		for _, id in ipairs(ids) do
+			id = tonumber(id)
+			if id and id ~= 0 and HO.Data.blessings[id] and not seen[id] and #out < Comm.REQUEST_MAX then
+				seen[id] = true
+				out[#out + 1] = id
+			end
+		end
+	end
+	return out
+end
+
+function Comm.SendRequest(ids)
 	if not me then
 		return
 	end
-	id = tonumber(id) or 0
-	if id ~= 0 and not HO.Data.blessings[id] then
-		return -- unknown blessing id: ignore
-	end
-	-- persist the local player's own request (nil clears); survives /reload and
-	-- is re-announced from the roster hook so late-joining paladins still see it
-	HO.db.myRequest = (id ~= 0) and id or nil
+	local list = NormalizeRequests(ids)
+	-- persist the local player's own request list (nil clears); survives /reload
+	-- and is re-announced from the roster hook so late-joining paladins see it
+	HO.db.myRequests = (#list > 0) and list or nil
 	-- reflect it locally too, so a self-covering paladin sees their own badge
-	Comm.requests[me] = HO.db.myRequest
+	Comm.requests[me] = HO.db.myRequests
 	if IsInGroup() then
-		Send("RQ:" .. id)
+		Send("RQ:" .. (#list > 0 and table.concat(list, ",") or "0"))
 	end
 	if HO.Request then
 		HO.Request.Refresh()
@@ -1012,17 +1030,17 @@ function Comm.SendRequest(id)
 	RefreshUI()
 end
 
--- a request is always about its sender; store/clear it and validate the id
+-- a request is always about its sender; parse the priority list and store/clear it
 handlers["RQ"] = function(sender, payload)
-	local id = tonumber(payload) or 0
-	if id ~= 0 and not HO.Data.blessings[id] then
-		return -- unknown blessing id: reject
+	local list = {}
+	for token in tostring(payload):gmatch("[^,]+") do
+		local id = tonumber(token)
+		if id and id ~= 0 and HO.Data.blessings[id] then
+			list[#list + 1] = id
+		end
 	end
-	local new = (id ~= 0) and id or nil
-	if Comm.requests[sender] ~= new then
-		Comm.requests[sender] = new
-		RefreshUI()
-	end
+	Comm.requests[sender] = (#list > 0) and NormalizeRequests(list) or nil
+	RefreshUI()
 end
 
 local protoWarned = {}
@@ -1166,6 +1184,15 @@ end
 
 HO.RegisterEvent("PLAYER_LOGIN", function()
 	me = HO.FullName("player")
+	-- migrate a legacy single request into the new ordered list
+	if HO.db and HO.db.myRequest ~= nil and HO.db.myRequests == nil then
+		HO.db.myRequests = { HO.db.myRequest }
+		HO.db.myRequest = nil
+	end
+	-- reflect our own persisted request so the badge shows before any regroup
+	if HO.db then
+		Comm.requests[me] = HO.db.myRequests
+	end
 	C_ChatInfo.RegisterAddonMessagePrefix(PREFIX)
 	HO.Roster.OnChanged(function()
 		PruneDeparted()
@@ -1184,8 +1211,8 @@ HO.RegisterEvent("PLAYER_LOGIN", function()
 			-- re-announce our own buff request so paladins who just joined see
 			-- it again; runs for non-paladins too (the one message they send),
 			-- so a requester who relogs or regroups is not forgotten
-			if HO.db and HO.db.myRequest and IsInGroup() then
-				Comm.SendRequest(HO.db.myRequest)
+			if HO.db and HO.db.myRequests and IsInGroup() then
+				Comm.SendRequest(HO.db.myRequests)
 			end
 		end
 	end)

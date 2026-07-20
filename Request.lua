@@ -30,12 +30,38 @@ local function BlessingName(id)
 	return b and (b.name or b.key) or tostring(id)
 end
 
--- one path for every set/clear: broadcast + persist through Comm, then repaint
-local function SendRequest(id)
+-- one path for every change: broadcast + persist the whole ordered list through
+-- Comm, then repaint
+local function Apply(list)
 	if HO.Comm and HO.Comm.SendRequest then
-		HO.Comm.SendRequest(id)
+		HO.Comm.SendRequest(list)
 	end
 	Request.Refresh()
+end
+
+local function CurrentList()
+	local list = {}
+	if HO.db and HO.db.myRequests then
+		for i, id in ipairs(HO.db.myRequests) do
+			list[i] = id
+		end
+	end
+	return list
+end
+
+-- click toggles a blessing in/out of the priority list: absent → appended at the
+-- lowest priority; present → removed and the rest re-ranked
+local function ToggleBlessing(id)
+	local list = CurrentList()
+	for i, v in ipairs(list) do
+		if v == id then
+			table.remove(list, i)
+			Apply(list)
+			return
+		end
+	end
+	list[#list + 1] = id
+	Apply(list)
 end
 
 local function CreateBlessingButton(id)
@@ -52,9 +78,16 @@ local function CreateBlessingButton(id)
 	btn.icon:SetPoint("TOPLEFT", 2, -2)
 	btn.icon:SetPoint("BOTTOMRIGHT", -2, 2)
 	btn.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+	-- priority rank badge (1 = highest), shown only while this blessing is chosen
+	btn.rank = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+	btn.rank:SetPoint("CENTER")
+	btn.rank:SetTextColor(0.05, 0.05, 0.08, 1) -- dark digit reads on the yellow highlight
+	local rf, rs = btn.rank:GetFont()
+	btn.rank:SetFont(rf, (rs or 14) + 2, "THICKOUTLINE")
+	btn.rank:Hide()
 	btn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
 	btn:SetScript("OnClick", function(self)
-		SendRequest(self.blessingID)
+		ToggleBlessing(self.blessingID)
 	end)
 	btn:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -108,7 +141,7 @@ local function Create()
 	clear:SetSize(CLEAR_W, BTN_SIZE)
 	clear:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD + n * (BTN_SIZE + BTN_GAP), rowY)
 	clear:SetText(L["Clear"])
-	clear:SetScript("OnClick", function() SendRequest(0) end)
+	clear:SetScript("OnClick", function() Apply({}) end)
 
 	statusText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 	statusText:SetPoint("TOPLEFT", PAD, rowY - BTN_SIZE - 8)
@@ -117,7 +150,7 @@ local function Create()
 	local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	hint:SetPoint("TOPLEFT", statusText, "BOTTOMLEFT", 0, -3)
 	hint:SetJustifyH("LEFT")
-	hint:SetText(L["click a blessing to request it for yourself"])
+	hint:SetText(L["click blessings in priority order — click again to remove"])
 
 	local width = PAD * 2 + n * (BTN_SIZE + BTN_GAP) + CLEAR_W
 	local height = 8 + TITLE_H + 6 + BTN_SIZE + 8 + 14 + 14 + PAD
@@ -134,24 +167,38 @@ function Request.ApplyScale()
 	end
 end
 
--- repaint the icons, the active-request highlight and the status line from the
--- persisted own request (HO.db.myRequest). Safe to call any time.
+-- repaint the icons, the priority rank badges and the status line from the
+-- persisted own request list (HO.db.myRequests). Safe to call any time.
 function Request.Refresh()
 	if not frame then
 		return
 	end
-	local cur = HO.db and HO.db.myRequest
+	local list = HO.db and HO.db.myRequests
+	local rankOf = {}
+	if list then
+		for i, id in ipairs(list) do
+			rankOf[id] = i
+		end
+	end
 	for id, btn in ipairs(blessingButtons) do
 		local b = HO.Data.blessings[id]
 		btn.icon:SetTexture((b and b.icon) or QUESTION_ICON)
-		if cur == id then
+		local rank = rankOf[id]
+		if rank then
 			btn.hl:Show()
+			btn.rank:SetText(tostring(rank))
+			btn.rank:Show()
 		else
 			btn.hl:Hide()
+			btn.rank:Hide()
 		end
 	end
-	if cur then
-		statusText:SetText(string.format(L["requesting: %s"], BlessingName(cur)))
+	if list and #list > 0 then
+		local names = {}
+		for _, id in ipairs(list) do
+			names[#names + 1] = BlessingName(id)
+		end
+		statusText:SetText(string.format(L["preferences: %s"], table.concat(names, " > ")))
 	else
 		statusText:SetText(L["no request"])
 	end

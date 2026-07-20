@@ -104,6 +104,8 @@ L["no request"] = "kein Wunsch"
 L["requested: %s"] = "gewünscht: %s"
 L["Clear"] = "Leeren"
 L["click a blessing to request it for yourself"] = "Klicke einen Segen, um ihn für dich zu erbitten"
+L["preferences: %s"] = "Vorlieben: %s"
+L["click blessings in priority order — click again to remove"] = "Segen in Prioritätsreihenfolge anklicken — erneut klicken entfernt"
 
 -- frequent chat messages
 L["force rebuff cancelled"] = "Zwangs-Rebuff abgebrochen"

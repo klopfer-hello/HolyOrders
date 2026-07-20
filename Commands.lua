@@ -614,7 +614,22 @@ HO.commands["request"] = function(rest)
 		HO.Print("no blessing matches '" .. arg .. "' — use a name or 1-" .. HO.Data.NUM_BLESSINGS .. " (or 'clear')")
 		return
 	end
-	HO.Comm.SendRequest(id)
+	-- append to the current priority list (the request window reorders/removes);
+	-- already-requested blessings are left in place
+	local list = {}
+	local present = false
+	if HO.db and HO.db.myRequests then
+		for i, v in ipairs(HO.db.myRequests) do
+			list[i] = v
+			if v == id then
+				present = true
+			end
+		end
+	end
+	if not present then
+		list[#list + 1] = id
+	end
+	HO.Comm.SendRequest(list)
 	HO.Print("requesting " .. BlessingLabel(id) .. " for yourself")
 end
 

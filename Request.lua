@@ -78,12 +78,21 @@ local function CreateBlessingButton(id)
 	btn.icon:SetPoint("TOPLEFT", 2, -2)
 	btn.icon:SetPoint("BOTTOMRIGHT", -2, 2)
 	btn.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-	-- priority rank badge (1 = highest), shown only while this blessing is chosen
-	btn.rank = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-	btn.rank:SetPoint("CENTER")
-	btn.rank:SetTextColor(0.05, 0.05, 0.08, 1) -- dark digit reads on the yellow highlight
+	-- priority rank badge (1 = highest) in the bottom-right corner, shown only while
+	-- this blessing is chosen. A small dark disc under a bright digit keeps it legible
+	-- over any blessing icon.
+	btn.rankBg = btn:CreateTexture(nil, "OVERLAY")
+	btn.rankBg:SetSize(15, 15)
+	btn.rankBg:SetPoint("BOTTOMRIGHT", 1, -1)
+	btn.rankBg:SetTexture("Interface\\Common\\Indicator-Gray") -- soft dark disc
+	btn.rankBg:SetVertexColor(0, 0, 0, 0.85)
+	btn.rankBg:Hide()
+	btn.rank = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	btn.rank:SetPoint("CENTER", btn.rankBg, "CENTER", 0, 0)
+	btn.rank:SetDrawLayer("OVERLAY", 2)
+	btn.rank:SetTextColor(1, 0.95, 0.6, 1) -- bright gold digit
 	local rf, rs = btn.rank:GetFont()
-	btn.rank:SetFont(rf, (rs or 14) + 2, "THICKOUTLINE")
+	btn.rank:SetFont(rf, (rs or 12), "THICKOUTLINE")
 	btn.rank:Hide()
 	btn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
 	btn:SetScript("OnClick", function(self)
@@ -116,16 +125,19 @@ local function Create()
 	frame:Hide()
 	table.insert(UISpecialFrames, "HolyOrdersRequest") -- ESC closes it
 
-	frame.bg = frame:CreateTexture(nil, "BACKGROUND")
-	frame.bg:SetAllPoints()
-	frame.bg:SetColorTexture(0.05, 0.05, 0.08, 0.93)
+	-- same dark rounded panel + thin gold border as the assignment window / fly-out
+	HO.Skin.Panel(frame)
 
 	frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	frame.title:SetPoint("TOPLEFT", PAD, -8)
+	frame.title:SetPoint("TOPLEFT", PAD, -9)
 	frame.title:SetText(L["Buff Request"])
+	frame.title:SetTextColor(HO.Colors.rgb("goldBright"))
+	frame.seam = HO.Skin.Seam(frame, -(8 + TITLE_H + 2))
 
 	local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-	close:SetPoint("TOPRIGHT", 2, 2)
+	close:SetPoint("TOPRIGHT", -4, -4)
+	close:SetSize(22, 22)
+	HO.Skin.CloseButton(close)
 	close:SetScript("OnClick", function() frame:Hide() end)
 
 	local n = HO.Data.NUM_BLESSINGS
@@ -141,6 +153,7 @@ local function Create()
 	clear:SetSize(CLEAR_W, BTN_SIZE)
 	clear:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD + n * (BTN_SIZE + BTN_GAP), rowY)
 	clear:SetText(L["Clear"])
+	HO.Skin.Button(clear)
 	clear:SetScript("OnClick", function() Apply({}) end)
 
 	statusText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -188,9 +201,11 @@ function Request.Refresh()
 			btn.hl:Show()
 			btn.rank:SetText(tostring(rank))
 			btn.rank:Show()
+			btn.rankBg:Show()
 		else
 			btn.hl:Hide()
 			btn.rank:Hide()
+			btn.rankBg:Hide()
 		end
 	end
 	if list and #list > 0 then

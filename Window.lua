@@ -663,6 +663,7 @@ function Window.Create()
 	win.hint:SetJustifyH("LEFT")
 
 	Window.ApplyScale() -- apply the saved window scale on first open
+	win.built = true -- set last: Refresh bails if Create ever errors partway
 end
 
 -- layout ----------------------------------------------------------------------
@@ -682,7 +683,9 @@ function Window.Expand(classToken)
 end
 
 function Window.Refresh()
-	if not win or not win:IsShown() then
+	-- win.built guards against a half-constructed window (Create erroring partway):
+	-- refreshing one would crash on a nil child widget instead of failing quietly
+	if not win or not win.built or not win:IsShown() then
 		return
 	end
 	local plan = HO.Plan.Active()

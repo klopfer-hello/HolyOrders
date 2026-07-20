@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.1] - 2026-07-20
+
+### Fixed
+- Minimap button position: it used a fixed radius that only fit the default
+  minimap and sat inside a resized (larger) one. The radius now follows the
+  minimap's actual size so the button hugs the edge at any size, handles square
+  minimaps, and re-places shortly after login to catch minimap resizer addons.
+
 ## [0.21.0] - 2026-07-20
 
 Sync protocol stays v4. The buff-request message now carries an ordered list;

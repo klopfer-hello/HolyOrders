@@ -633,6 +633,29 @@ HO.commands["request"] = function(rest)
 	HO.Print("requesting " .. BlessingLabel(id) .. " for yourself")
 end
 
+-- legacy blessing-addon bridge diagnostics: show status, the exact strings we
+-- would emit, and force a broadcast now
+HO.commands["interop"] = function()
+	if not HO.Interop then
+		HO.Print("interop bridge not loaded")
+		return
+	end
+	local s = HO.Interop.Status()
+	HO.Print("legacy broadcast: " .. (s.enabled and "|cff40ff40ON|r" or "|cffff4040OFF|r (enable it in Options)")
+		.. " — paladin: " .. (s.paladin and "yes" or "no")
+		.. " — channel: " .. (s.channel or "|cffff4040solo — nothing sends|r"))
+	HO.Print("would emit: " .. s.selfMsg)
+	for _, e in ipairs(s.overrides) do
+		HO.Print("            NASSIGN " .. e)
+	end
+	if HO.Interop.ForceBroadcast() then
+		HO.Print("|cff40ff40re-broadcast sent to the group|r")
+	else
+		HO.Print("not sending — needs: option ON, you are a paladin, and you are in a group")
+	end
+	HO.Print("note: a legacy client on your OWN character ignores your own broadcasts — verify from a SECOND character running it")
+end
+
 -- help ------------------------------------------------------------------------
 
 -- diagnostic/experimental commands, kept out of the default /ho help listing

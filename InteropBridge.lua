@@ -168,6 +168,11 @@ local function OnAddonMessage(prefix, message, channel, senderFull)
 	if ShortName(senderFull) == ShortName(HO.FullName("player") or "") then
 		return
 	end
+	-- with debug logging on, record what legacy clients actually send on the wire,
+	-- so the emitted format can be verified against a real one (observation only)
+	if HO.db and HO.db.options.trace then
+		HO.Log("interop", "rx " .. (ShortName(senderFull) or "?") .. " " .. tostring(message):sub(1, 200))
+	end
 	if message:match("^(%S+)") == "REQ" then
 		-- answer a whispered request privately, a broadcast request to the group
 		if channel == "WHISPER" and senderFull then
@@ -213,6 +218,28 @@ function Interop.OnLocalPlanChanged(paladin)
 	if enabled and paladin == HO.FullName("player") then
 		ScheduleBroadcast()
 	end
+end
+
+-- diagnostics: status flags plus the exact strings we would emit. For verifying
+-- the bridge against a live legacy client without reading its code.
+function Interop.Status()
+	return {
+		enabled = enabled,
+		paladin = IsPaladin(),
+		channel = GroupChannel(),
+		selfMsg = "SELF " .. EncodeCaps() .. "@" .. EncodeGrid(),
+		overrides = OverrideEntries(),
+	}
+end
+
+-- force an immediate broadcast (bypasses the debounce). Returns false if it could
+-- not send: disabled, not a paladin, or solo.
+function Interop.ForceBroadcast()
+	if not enabled or not IsPaladin() or not GroupChannel() then
+		return false
+	end
+	Broadcast()
+	return true
 end
 
 HO.RegisterEvent("CHAT_MSG_ADDON", OnAddonMessage)

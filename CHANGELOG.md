@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-07-22
+
+Sync protocol stays v4 — compatible with 0.17.x–0.21.x.
+
+### Added
+- The per-class fly-out now works **in combat**: hover a class button mid-fight
+  to see every member with live status and remaining-buff timers, and click a
+  member to buff them. It closes on its own shortly after the cursor leaves;
+  hovering another class switches instantly.
+- In-combat rebuffing on the class buttons: each combat click casts on the next
+  member who can receive it — players and pets alike, each with their own
+  assigned blessing (the greater one when the plan would use it). Out of combat
+  a click still casts the planned blessing on the smart auto-target.
+- Solo-paladin Salvation coverage now applies in parties too, not just raids:
+  everyone gets Salvation except tanks (who get Kings) and pets (who get the
+  pet blessing); explicit buff requests still win.
+- Remaining-buff timers on the fly-out member rows (yellow when expiring soon).
+- `/ho bar debug`: per-class diagnostic showing button/fly-out/cycle state and
+  what is keeping a force rebuff alive.
+- `/ho spec <name> other` (also via name-click in the assignment window): a
+  durable "none of the special specs" tag to overrule a wrong auto-inference,
+  e.g. a dps warrior mis-read as a protection tank.
+
+### Changed
+- During a force rebuff, each class button turns green as soon as that class is
+  fully refreshed, so progress is visible per class; the handle gem stays red
+  until the whole sweep is fresh (everything younger than 2 minutes).
+- Status visuals keep updating during combat: fly-out borders, timers and
+  badges, panel coverage summaries, button counts and dim-state.
+
+### Fixed
+- Spec inference no longer tags members from half-loaded inspect data (the
+  cause of false "protection"/tank flags, which could also hide a class from
+  the bar when assigned Salvation). Reads are validated against the member's
+  level, inferred tags re-inspect and self-correct, and hand-set tags are
+  authoritative.
+
 ## [0.21.1] - 2026-07-20
 
 ### Fixed

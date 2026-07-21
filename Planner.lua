@@ -55,8 +55,8 @@ function Planner.ResolvePreference(name, classToken, isTank)
 	--   1) the member's own ranked buff requests (their explicit wish)
 	--   2) a remembered member liking (a paladin's earlier manual override)
 	--   3) the spec/default class chain
-	-- Downstream FirstCastablePref / step-4 logic still filters each by eligibility
-	-- and castability, so an ineligible or unavailable preference is skipped.
+	-- The downstream step-4 logic still filters each by eligibility and
+	-- castability, so an ineligible or unavailable preference is skipped.
 	local result, seen = {}, {}
 	local function push(id)
 		if id and not seen[id] then
@@ -93,21 +93,6 @@ local function Available(pallyName, blessingID)
 	return blessingID ~= SANCTUARY
 end
 Planner.IsAvailable = Available
-
--- first preference in `list` that `caster` can actually deliver to this class:
--- eligible for the class AND known by that paladin. Returns nil if none qualify.
--- (Fixes members getting nothing when their top preference is uncastable.)
-local function FirstCastablePref(list, classToken, caster)
-	if not list then
-		return nil
-	end
-	for _, id in ipairs(list) do
-		if HO.Data.IsEligible(classToken, id, false) and Available(caster, id) then
-			return id
-		end
-	end
-	return nil
-end
 
 -- buff strength: improvement talents dominate (a maxed talent beats one
 -- spell rank), then spell rank, then greater-version knowledge as tiebreak
@@ -254,34 +239,13 @@ local function RunCore(pallys)
 
 	-- 1) blessing coverage: one blessing per paladin, deterministic
 	local assigned = {} -- [pallyName] = blessingID
-	if solo and isRaid then
-		assigned[pallys[1]] = SALVATION -- solo raid mode: Salvation except tanks
-	elseif solo then
-		-- solo party: one class assignment per class (majority preference of
-		-- its members; game rule allows different blessings per target), with
-		-- overrides only for members who deviate (added in step 4)
-		for classToken, info in pairs(classes) do
-			local counts = {}
-			for _, entry in ipairs(info.list) do
-				-- fall through the whole preference chain, not just the top entry,
-				-- so a member still counts when the paladin can't cast their first
-				-- choice (e.g. a paladin without Kings talented)
-				local prefs = Planner.ResolvePreference(entry.name, classToken, IsTankEntry(plan, entry))
-				local pick = FirstCastablePref(prefs, classToken, pallys[1])
-				if pick then
-					counts[pick] = (counts[pick] or 0) + 1
-				end
-			end
-			local best, bestCount
-			for id, count in pairs(counts) do
-				if not bestCount or count > bestCount or (count == bestCount and id < best) then
-					best, bestCount = id, count
-				end
-			end
-			if best then
-				HO.Plan.SetClassAssignment(pallys[1], classToken, best, "auto")
-			end
-		end
+	if solo then
+		-- solo mode, raid AND party alike: Salvation on everyone. Tanks are
+		-- protected by the step-2/3 rules (their classes fall to singles that skip
+		-- them, and they receive Kings), pets get the pet blessing through their
+		-- owner's class row, and explicit member requests still win via the
+		-- step-4 request pass.
+		assigned[pallys[1]] = SALVATION
 	elseif isRaid then
 		local used = {}
 		for i = 1, math.min(#pallys, #RAID_COVERAGE) do
@@ -433,11 +397,11 @@ local function RunCore(pallys)
 	-- 4) per-member preference singles for what the coverage doesn't provide
 	for _, entry in ipairs(sortedUnits) do
 		if not entry.isPet and entry.name and not IsTankEntry(plan, entry) then
-			if solo and isRaid then
-				-- solo raid defaults every non-tank to Salvation. Still honor an
-				-- EXPLICIT buff request (not the default preference chain) as a single
-				-- override, so a member who asked for something specific gets it
-				-- instead of Salvation.
+			if solo then
+				-- solo mode defaults every non-tank to Salvation, so the default
+				-- preference chains must NOT re-override it. Still honor an EXPLICIT
+				-- buff request (not the default chain) as a single override, so a
+				-- member who asked for something specific gets it instead of Salvation.
 				local req = HO.Comm and HO.Comm.requests and HO.Comm.requests[entry.name]
 				if type(req) == "table" and not HasOverrideFor(plan, entry.name) then
 					for _, pref in ipairs(req) do

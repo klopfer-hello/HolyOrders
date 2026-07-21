@@ -71,6 +71,7 @@ L["hold Ctrl and drag to move"] = "Strg halten und ziehen zum Bewegen"
 L["right-click: force rebuff (pre-pull refresh)"] = "Rechtsklick: Zwangs-Rebuff (vor dem Pull)"
 L["shift-right-click: assignment window"] = "Shift-Rechtsklick: Zuteilungsfenster"
 L["mouse wheel: change my assignment"] = "Mausrad: meine Zuteilung wechseln"
+L["in combat: click cycles through the class's members"] = "Im Kampf: Klick wirkt reihum auf die Mitglieder der Klasse"
 
 -- cast-bar class fly-out
 L["no buff assigned"] = "Kein Segen zugewiesen"

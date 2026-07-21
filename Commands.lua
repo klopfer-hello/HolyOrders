@@ -324,6 +324,11 @@ HO.commands["bar"] = function(rest)
 	elseif sub == "reset" then
 		HO.Bar.ResetPosition()
 		HO.Print("bar position reset")
+	elseif sub == "debug" then
+		-- per-class button/fly-out/cycle state + what keeps a force rebuff alive
+		for _, line in ipairs(HO.Bar.Debug()) do
+			HO.PrintLine(line)
+		end
 	elseif sub:match("^grow") then
 		local dir = sub:match("^grow%s+(%a+)$")
 		if dir == "left" or dir == "right" or dir == "up" or dir == "down" then
@@ -338,7 +343,7 @@ HO.commands["bar"] = function(rest)
 			HO.Print("usage: /ho bar grow left|right|up|down")
 		end
 	else
-		HO.Print("usage: /ho bar show|hide|reset|grow <dir>  (hold Ctrl and drag the handle to move)")
+		HO.Print("usage: /ho bar show|hide|reset|debug|grow <dir>  (hold Ctrl and drag the handle to move)")
 	end
 end
 

@@ -46,8 +46,31 @@ local buttons = {}
 local lastGrow
 local pendingReset
 
--- arranges handle and buttons for the configured growth direction; must only
--- run out of combat (buttons are protected frames)
+-- anchor a frame at a linear distance from the origin end, for the current
+-- grow direction (the origin end is always where the handle sits). Out of
+-- combat only — the placed frames are protected.
+local function PlaceAtOffset(frame, offset)
+	local grow = HO.db.options.bar and HO.db.options.bar.grow or "right"
+	frame:ClearAllPoints()
+	if grow == "right" then
+		frame:SetPoint("LEFT", bar, "LEFT", offset, 0)
+	elseif grow == "left" then
+		frame:SetPoint("RIGHT", bar, "RIGHT", -offset, 0)
+	elseif grow == "down" then
+		frame:SetPoint("TOP", bar, "TOP", 0, -offset)
+	else
+		frame:SetPoint("BOTTOM", bar, "BOTTOM", 0, offset)
+	end
+end
+
+-- place a class button into the nth visible slot (slot 0 is the aura button).
+-- Buttons are class-fixed, so the visible set is compacted here per refresh.
+local function PlaceButtonInSlot(btn, slot)
+	PlaceAtOffset(btn, HANDLE_WIDTH + GAP + slot * (BUTTON_SIZE + GAP))
+end
+
+-- arranges the frame, handle and aura slot for the configured growth direction;
+-- must only run out of combat (buttons are protected frames)
 local function LayoutBar()
 	local grow = HO.db.options.bar and HO.db.options.bar.grow or "right"
 	local horizontal = (grow == "left" or grow == "right")
@@ -76,28 +99,10 @@ local function LayoutBar()
 	if handle.tex and handle.tex.SetRotation then
 		handle.tex:SetRotation(horizontal and (math.pi / 2) or 0)
 	end
-	-- anchor a frame at a linear distance from the origin end, for the current
-	-- grow direction (the origin end is always where the handle sits)
-	local function PlaceAtOffset(frame, offset)
-		frame:ClearAllPoints()
-		if grow == "right" then
-			frame:SetPoint("LEFT", bar, "LEFT", offset, 0)
-		elseif grow == "left" then
-			frame:SetPoint("RIGHT", bar, "RIGHT", -offset, 0)
-		elseif grow == "down" then
-			frame:SetPoint("TOP", bar, "TOP", 0, -offset)
-		else
-			frame:SetPoint("BOTTOM", bar, "BOTTOM", 0, offset)
-		end
-	end
 	-- the aura button takes the first slot (slot 0) right after the handle; the
-	-- class buttons follow, shifted one slot along
+	-- class buttons follow, compacted into slots 1..n by the refresh
 	if auraButton then
 		PlaceAtOffset(auraButton, HANDLE_WIDTH + GAP)
-	end
-	for i, btn in ipairs(buttons) do
-		local offset = HANDLE_WIDTH + GAP + i * (BUTTON_SIZE + GAP)
-		PlaceAtOffset(btn, offset)
 	end
 	lastGrow = grow
 end
@@ -226,9 +231,11 @@ end
 local function UpdateButtonTexts(btn, task)
 	btn.count:SetText(task.missing > 0 and tostring(task.missing) or "")
 	btn.timer:SetText(FormatShort(task.minRemaining))
-	-- during a force rebuff every duty icon is red-bordered, so the whole bar
-	-- reads as "rebuffing now" (matching the red handle gem)
-	if HO.Engine.ForceActive() then
+	-- during a force rebuff a class stays red only while IT still has reachable
+	-- work (the sweep re-casts anything older than 2 minutes); a finished class
+	-- turns green right away so per-class progress is visible. The handle gem
+	-- stays red for the sweep as a whole until everything is fresh.
+	if HO.Engine.ForceActive() and (task.reachable or 0) > 0 then
 		btn.bg:SetVertexColor(0.55, 0.10, 0.10, 0.85)
 		SetButtonBorder(btn, 0.85, 0.15, 0.15)
 		return
@@ -263,64 +270,27 @@ local function UpdateButtonTexts(btn, task)
 	end
 end
 
--- per-class fly-out ----------------------------------------------------------
--- A NON-secure panel (parented to UIParent, never into the secure bar) anchored
--- visually to a class button. It lists that class's roster members with the
--- blessing each is assigned and a coloured status border — green = has it,
--- red = assigned but missing, neutral = no assignment or out of range (status
--- unknowable). Wheeling a row re-assigns that member's blessing and right-click
--- clears it, exactly like the assignment window's member cell (same Plan calls,
--- so it stays synced). Left-clicking a row casts that member's single blessing
--- (secure), so the rows are secure buttons configured only out of combat; the
--- whole fly-out is an OUT-OF-COMBAT tool and closes when combat starts.
-local flyout
-local flyoutRows = {}
-local flyoutClass -- classToken currently displayed, nil when closed
-local flyoutAnchor -- the class button the fly-out is currently anchored to
+-- per-class SECURE fly-out ----------------------------------------------------
+-- One protected panel per class, each holding pre-created secure member rows.
+-- Everything (rows, cast attributes, sizes, anchors, shown-state of rows) is
+-- configured ONLY out of combat; the panel itself is shown by the class
+-- button's `_onenter` SECURE SNIPPET, which the restricted environment is
+-- allowed to run even in combat — so the fly-out opens mid-fight, and its rows
+-- (plain secure action buttons, pre-baked spell/unit) cast on click. Closing is
+-- the restricted auto-hide facility (RegisterAutoHide), which also replaces the
+-- old insecure hover-close timer out of combat: one code path for both.
+-- Wheel/right-click row edits stay insecure and simply refuse in combat.
+local flyoutPanels = {} -- [classIndex] = secure panel, aligned with CLASS_ORDER
 
--- forward declarations so the hover-close timer and the class-button hover
--- handlers below can reference these before their definitions
-local FlyoutHide, FlyoutRefresh, FlyoutShow
-
--- hover-close: the fly-out opens on mouseover of a class button and closes a
--- short moment after the cursor leaves BOTH the button and the fly-out, so you
--- can slide from the button into the fly-out without it vanishing
-local flyoutCloseTimer
-local function CancelClose()
-	if flyoutCloseTimer then
-		flyoutCloseTimer:Cancel()
-		flyoutCloseTimer = nil
-	end
-end
-local function MaybeClose()
-	flyoutCloseTimer = nil
-	if not flyout or not flyout:IsShown() then
-		return
-	end
-	if flyout:IsMouseOver() or (flyoutAnchor and flyoutAnchor:IsMouseOver()) then
-		return -- cursor is still over the fly-out or its class button
-	end
-	FlyoutHide()
-end
-local function ScheduleClose()
-	CancelClose()
-	flyoutCloseTimer = C_Timer.NewTimer(0.3, MaybeClose)
-end
 local FLYOUT_ROW_H = 30
 local FLYOUT_HEADER = 20
 local FLYOUT_FOOTER = 5 -- bottom padding only (no hint line)
 local FLYOUT_PAD = 6
 local FLYOUT_WIDTH = 190
 local FLYOUT_ICON = FLYOUT_ROW_H - 6
-
-local function FindButtonForClass(classToken)
-	for i = 1, MAX_BUTTONS do
-		local btn = buttons[i]
-		if btn:IsShown() and btn.task and btn.task.classToken == classToken then
-			return btn
-		end
-	end
-end
+local FLYOUT_EXPIRING = 120 -- seconds left below which the row timer turns yellow
+local FLYOUT_MAX_ROWS = 15 -- pre-created secure rows per class (raid-size bound)
+local FLYOUT_AUTOHIDE = 1.5 -- seconds after the cursor leaves before auto-close
 
 local function SetRowBorder(row, r, g, b)
 	if not row.iconFrame then
@@ -351,6 +321,18 @@ local function UpdateRowStatus(row, m)
 		row.name:SetText(short .. " |cff9d9d9d" .. string.format(L["(pet of %s)"], ownerShort) .. "|r")
 	else
 		row.name:SetText(short)
+	end
+	-- remaining time on this member's blessing (refreshes each update tick); yellow
+	-- once it is expiring soon, a subdued light tone otherwise, blank when unbuffed
+	if m.remaining and m.remaining > 0 then
+		row.timer:SetText(FormatShort(m.remaining))
+		if m.remaining < FLYOUT_EXPIRING then
+			row.timer:SetTextColor(HO.Colors.rgb("yellow"))
+		else
+			row.timer:SetTextColor(0.75, 0.75, 0.75)
+		end
+	else
+		row.timer:SetText("")
 	end
 	-- out-of-range is unknowable, so neutral/dim rather than a false red
 	if not m.blessingID then
@@ -437,7 +419,7 @@ end
 -- apply an override change through the SAME public path the assignment window's
 -- member cell uses, so the edit syncs and the member "liking" stays consistent.
 -- Pets never record a liking (a pet blessing is an option, not a member wish).
-local function ApplyMemberOverride(memberName, isPet, newID)
+local function ApplyMemberOverride(memberName, isPet, newID, classToken)
 	local me = HO.FullName("player")
 	if not me then
 		return
@@ -446,31 +428,36 @@ local function ApplyMemberOverride(memberName, isPet, newID)
 	if not isPet then
 		HO.Plan.SetMemberPref(memberName, (newID and newID ~= 0) and newID or nil)
 	end
-	-- Bar.Refresh recomputes the engine and re-renders the fly-out (via its hook);
-	-- keep the window in sync too. A fly-out edit is a per-member OVERRIDE, which
-	-- only shows in the window's expanded member row — so expand that class so the
+	-- Bar.Refresh recomputes the engine and re-renders the fly-out rows; keep the
+	-- window in sync too. A fly-out edit is a per-member OVERRIDE, which only
+	-- shows in the window's expanded member row — so expand that class so the
 	-- change is actually visible, not silently hidden under a collapsed row.
 	Bar.Refresh()
 	if HO.Window then
-		if HO.Window.Expand and flyoutClass then
-			HO.Window.Expand(flyoutClass)
+		if HO.Window.Expand and classToken then
+			HO.Window.Expand(classToken)
 		elseif HO.Window.Refresh then
 			HO.Window.Refresh()
 		end
 	end
 end
 
-local function AcquireFlyoutRow(index)
-	local row = flyoutRows[index]
+-- pre-created secure member row inside a class panel. Position is FIXED at
+-- creation (slot-based); visuals and cast attributes are (re)baked only out of
+-- combat, so in combat the row is a frozen, clickable secure cast button.
+local function AcquireFlyoutRow(panel, index)
+	panel.rows = panel.rows or {}
+	local row = panel.rows[index]
 	if row then
 		return row
 	end
-	-- secure so a left-click can cast the member's blessing; attributes are only
-	-- ever set out of combat (the fly-out is an out-of-combat tool)
-	row = CreateFrame("Button", nil, flyout, "SecureActionButtonTemplate")
+	row = CreateFrame("Button", nil, panel, "SecureActionButtonTemplate")
 	row:SetSize(FLYOUT_WIDTH - 2 * FLYOUT_PAD, FLYOUT_ROW_H)
+	row:SetPoint("TOPLEFT", panel, "TOPLEFT", FLYOUT_PAD, -(FLYOUT_HEADER + (index - 1) * FLYOUT_ROW_H))
 	row:RegisterForClicks("AnyDown", "AnyUp")
 	row:EnableMouseWheel(true)
+	row:Hide()
+	row.classToken = panel.classToken
 	row.bg = row:CreateTexture(nil, "BACKGROUND")
 	row.bg:SetAllPoints()
 	row.bg:SetColorTexture(1, 1, 1, 0.05)
@@ -486,8 +473,12 @@ local function AcquireFlyoutRow(index)
 	row.iconFrame:SetTexture(BTN_FRAME)
 	row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 	row.name:SetPoint("LEFT", row.icon, "RIGHT", 4, 0)
-	-- reserve room on the right for the request badge (shown only when requested)
-	row.name:SetPoint("RIGHT", -(FLYOUT_ICON + 4), 0)
+	-- remaining-buff timer, sitting between the name and the request-badge slot
+	row.timer = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+	row.timer:SetPoint("RIGHT", row, "RIGHT", -(FLYOUT_ICON + 6), 0)
+	row.timer:SetJustifyH("RIGHT")
+	-- name fills the middle; the request badge keeps its slot on the far right
+	row.name:SetPoint("RIGHT", row.timer, "LEFT", -3, 0)
 	row.name:SetJustifyH("LEFT")
 	-- request badge: the requested blessing's icon on the row's right side, kept
 	-- distinct from the assigned-blessing icon on the left. Non-secure texture.
@@ -513,7 +504,7 @@ local function AcquireFlyoutRow(index)
 		local plan = HO.Plan.Active()
 		local cur = plan.player[me] and plan.player[me][self.memberName]
 		local newID = CycleMemberOverride(me, cur, delta > 0 and 1 or -1)
-		ApplyMemberOverride(self.memberName, self.isPet, newID)
+		ApplyMemberOverride(self.memberName, self.isPet, newID, self.classToken)
 	end)
 	-- left-click casts the secure blessing; right-click clears the assignment.
 	-- PostClick runs after the (suppressed for right) secure action, so editing
@@ -524,83 +515,47 @@ local function AcquireFlyoutRow(index)
 				HO.Print(L["assignment changes apply after combat"])
 				return
 			end
-			ApplyMemberOverride(self.memberName, self.isPet, 0) -- clear the override (and liking)
+			ApplyMemberOverride(self.memberName, self.isPet, 0, self.classToken) -- clear the override (and liking)
 		end
 	end)
-	-- no tooltip: the row already shows the blessing icon, the member name and a
-	-- colour-coded border (green has / red missing / yellow requested). The enter
-	-- and leave scripts only drive the fly-out's hover-open/close.
-	row:SetScript("OnEnter", function()
-		CancelClose() -- keep the fly-out open while the cursor is over a row
-	end)
-	row:SetScript("OnLeave", function()
-		ScheduleClose()
-	end)
-	flyoutRows[index] = row
+	-- no tooltip and no hover scripts: the restricted auto-hide keeps the panel
+	-- open while the cursor is anywhere over it (rows included)
+	panel.rows[index] = row
 	return row
 end
 
-local function CreateFlyout()
-	if flyout then
-		return
-	end
-	-- parented to UIParent (NOT the secure bar) so it can never taint the cast
-	-- buttons; it is a plain frame that only edits assignments and shows status
-	flyout = CreateFrame("Frame", "HolyOrdersFlyout", UIParent)
-	flyout:SetWidth(FLYOUT_WIDTH)
-	flyout:SetHeight(FLYOUT_HEADER + FLYOUT_ROW_H + FLYOUT_FOOTER)
-	flyout:EnableMouse(true) -- swallow clicks so they don't fall through to the world
-	flyout:SetClampedToScreen(true)
-	flyout:SetScript("OnEnter", CancelClose) -- cursor entered the fly-out: stay open
-	flyout:SetScript("OnLeave", ScheduleClose)
-	-- same dark rounded panel + thin gold border as the assignment window, with a
-	-- gold seam under the title (shared HO.Skin builder)
-	HO.Skin.Panel(flyout)
-	flyout.title = flyout:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-	flyout.title:SetPoint("TOPLEFT", FLYOUT_PAD + 2, -5)
-	flyout.title:SetPoint("TOPRIGHT", -(FLYOUT_PAD + 2), -5)
-	flyout.title:SetJustifyH("LEFT")
-	flyout.title:SetTextColor(HO.Colors.rgb("goldBright"))
-	flyout.seam = HO.Skin.Seam(flyout, -(FLYOUT_HEADER - 2))
-	-- the fly-out is parented to UIParent, so it does NOT inherit the bar's scale;
-	-- match it to the configured cast-bar scale here and in Bar.ApplyScale
-	flyout:SetScale(HO.db.options.bar and HO.db.options.bar.scale or 1)
-	flyout:Hide()
-end
-
-function FlyoutHide()
-	flyoutClass = nil
-	flyoutAnchor = nil
-	CancelClose()
-	if flyout then
-		flyout:Hide()
+-- one secure panel per class. The panel inherits a secure-handler template so
+-- it is a PROTECTED frame the class button's snippet may Show/Hide in combat;
+-- its skin/title are ordinary textures. Parented to the bar: it inherits the
+-- bar's scale and hides with it.
+local function CreatePanels()
+	for i, classToken in ipairs(CLASS_ORDER) do
+		local panel = CreateFrame("Frame", "HolyOrdersFlyout" .. i, bar, "SecureHandlerShowHideTemplate")
+		panel.classToken = classToken
+		panel:SetWidth(FLYOUT_WIDTH)
+		panel:SetHeight(FLYOUT_HEADER + FLYOUT_ROW_H + FLYOUT_FOOTER)
+		panel:EnableMouse(true) -- swallow clicks; keeps the auto-hide hover alive
+		panel:SetClampedToScreen(true)
+		panel:SetFrameStrata("DIALOG") -- always reads over the bar
+		panel:SetToplevel(true)
+		-- same dark rounded panel + thin gold border as the assignment window,
+		-- with a gold seam under the title (shared HO.Skin builder)
+		HO.Skin.Panel(panel)
+		panel.title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		panel.title:SetPoint("TOPLEFT", FLYOUT_PAD + 2, -5)
+		panel.title:SetPoint("TOPRIGHT", -(FLYOUT_PAD + 2), -5)
+		panel.title:SetJustifyH("LEFT")
+		panel.title:SetTextColor(HO.Colors.rgb("goldBright"))
+		panel.seam = HO.Skin.Seam(panel, -(FLYOUT_HEADER - 2))
+		panel:SetAttribute("active", 0) -- gates the secure show (set out of combat)
+		panel:Hide()
+		flyoutPanels[i] = panel
 	end
 end
 
--- rebuild the fly-out from the engine's per-member status. The rows are secure,
--- so this may only run out of combat; the whole fly-out is closed in combat.
-function FlyoutRefresh()
-	if not flyoutClass or not flyout or not flyout:IsShown() then
-		return
-	end
-	if InCombatLockdown() then
-		return -- out-of-combat tool: never touch secure rows in combat
-	end
-	-- re-find the button that currently represents this class; if the class left
-	-- the bar (or the bar hid), close the fly-out
-	local anchor = FindButtonForClass(flyoutClass)
-	if not anchor then
-		FlyoutHide()
-		return
-	end
-	flyoutAnchor = anchor
-	flyout:ClearAllPoints()
-	-- fly out to the LEFT of the class button (top-aligned), like the classic
-	-- paladin buff addons; SetClampedToScreen keeps it on-screen near an edge
-	flyout:SetPoint("TOPRIGHT", anchor, "TOPLEFT", -4, 0)
-	-- header = class name + a compact coverage summary (folded in from the old
-	-- class tooltip, which is now suppressed while the fly-out is open)
-	local task = HO.Engine.tasks[flyoutClass]
+-- panel header: class name + a compact coverage summary (the class tooltip is
+-- suppressed while the panel is open). Plain text — safe to refresh any time.
+local function FlyoutTitle(classToken, task)
 	local status = ""
 	if task and not task.noneAssigned then
 		if (task.missing or 0) > 0 then
@@ -611,52 +566,148 @@ function FlyoutRefresh()
 			status = "  |cff" .. HO.Colors.hex("green") .. L["all covered"] .. "|r"
 		end
 	end
-	flyout.title:SetText(flyoutClass .. status)
-
-	local members = HO.Engine.ClassMembers(flyoutClass)
-	local count = #members
-	for i, m in ipairs(members) do
-		local row = AcquireFlyoutRow(i)
-		UpdateRowStatus(row, m)     -- non-secure visuals
-		ConfigureRowSecure(row, m)  -- secure cast attributes (out of combat only)
-		row:ClearAllPoints()
-		row:SetPoint("TOPLEFT", flyout, "TOPLEFT", FLYOUT_PAD, -(FLYOUT_HEADER + (i - 1) * FLYOUT_ROW_H))
-		row:Show()
-	end
-	for i = count + 1, #flyoutRows do
-		flyoutRows[i]:Hide()
-	end
-
-	local rows = count > 0 and count or 1 -- keep a minimum height when empty
-	flyout:SetHeight(FLYOUT_HEADER + rows * FLYOUT_ROW_H + FLYOUT_FOOTER)
-	-- strata just above the bar so the fly-out always reads over it
-	local barStrata = bar and bar:GetFrameStrata() or "LOW"
-	flyout:SetFrameStrata(barStrata == "HIGH" and "DIALOG" or "MEDIUM")
-	flyout:SetToplevel(true)
+	return classToken .. status
 end
 
--- open (or re-target) the fly-out for a class on hover. Out of combat only: the
--- secure rows cannot be reconfigured in combat, so the fly-out stays closed then.
-function FlyoutShow(classToken)
-	if InCombatLockdown() or not classToken then
+-- (re)build one class panel from the engine's per-member status: row visuals,
+-- secure cast attributes, shown-state, panel size/anchor and the `active` gate.
+-- OUT OF COMBAT ONLY — in combat everything stays frozen and the secure snippet
+-- merely shows/hides the pre-configured panel.
+local function FlyoutConfigure(classIndex, classToken, task, anchorBtn, anchorShown)
+	local panel = flyoutPanels[classIndex]
+	if not panel then
 		return
 	end
-	CancelClose()
-	CreateFlyout()
-	flyoutClass = classToken
-	flyout:Show()
-	FlyoutRefresh()
+	local members = HO.Engine.ClassMembers(classToken)
+	local count = math.min(#members, FLYOUT_MAX_ROWS)
+	if count == 0 or not anchorShown then
+		panel:SetAttribute("active", 0)
+		panel:Hide()
+		return
+	end
+	panel.title:SetText(FlyoutTitle(classToken, task))
+	for i = 1, count do
+		local row = AcquireFlyoutRow(panel, i)
+		UpdateRowStatus(row, members[i]) -- non-secure visuals
+		ConfigureRowSecure(row, members[i]) -- secure cast attributes
+		row:Show()
+	end
+	for i = count + 1, #(panel.rows or {}) do
+		panel.rows[i]:Hide()
+	end
+	panel:SetHeight(FLYOUT_HEADER + count * FLYOUT_ROW_H + FLYOUT_FOOTER)
+	-- fly out to the LEFT of the class button (top-aligned), like the classic
+	-- paladin buff addons; SetClampedToScreen keeps it on-screen near an edge
+	panel:ClearAllPoints()
+	panel:SetPoint("TOPRIGHT", anchorBtn, "TOPLEFT", -4, 0)
+	panel:SetAttribute("active", 1)
 end
 
-local function CreateButton(index)
-	local btn = CreateFrame("Button", "HolyOrdersBarButton" .. index, bar, "SecureActionButtonTemplate")
+-- hide every panel (out of combat; used when the bar itself hides)
+local function FlyoutHideAll()
+	for _, panel in ipairs(flyoutPanels) do
+		panel:SetAttribute("active", 0)
+		panel:Hide()
+	end
+end
+
+-- COMBAT-SAFE visual refresh for rows that are already on screen: textures and
+-- fontstrings are not protected, so green/red borders, timers and badges can
+-- keep tracking reality mid-fight — only the secure bits (attributes, layout,
+-- shown-state) stay frozen. Rows are matched by member NAME so a frozen row is
+-- never repainted with a different member's status.
+local function FlyoutRefreshShownVisuals()
+	for i, classToken in ipairs(CLASS_ORDER) do
+		local panel = flyoutPanels[i]
+		if panel and panel:IsShown() and panel.rows then
+			local byName = {}
+			for _, m in ipairs(HO.Engine.ClassMembers(classToken)) do
+				if m.name then
+					byName[m.name] = m
+				end
+			end
+			for _, row in ipairs(panel.rows) do
+				if row:IsShown() and row.memberName then
+					local m = byName[row.memberName]
+					if m then
+						UpdateRowStatus(row, m)
+					end
+				end
+			end
+			-- the coverage summary in the title is a plain fontstring: keep it live
+			panel.title:SetText(FlyoutTitle(classToken, HO.Engine.tasks[classToken]))
+		end
+	end
+end
+
+-- class buttons are CLASS-FIXED (buttons[i] <-> CLASS_ORDER[i]) so the secure
+-- button<->panel wiring is static; the visible set is compacted out of combat.
+local function CreateButton(classIndex)
+	local btn = CreateFrame("Button", "HolyOrdersBarButton" .. classIndex,
+		bar, "SecureActionButtonTemplate, SecureHandlerEnterLeaveTemplate")
+	btn.classToken = CLASS_ORDER[classIndex]
+	btn.classIndex = classIndex
 	btn:SetSize(BUTTON_SIZE, BUTTON_SIZE)
-	-- modern clients fire secure actions on the edge selected by the
-	-- ActionButtonUseKeyDown cvar; register both so the click always lands
-	btn:RegisterForClicks("AnyDown", "AnyUp")
-	-- left: the planned cast (greater when planned); right: always a single
-	btn:SetAttribute("type1", "spell")
+	-- ONE click edge only, mirroring the ActionButtonUseKeyDown cvar (set in
+	-- Bar.Refresh): registering both edges would run the OnClick wrap twice per
+	-- click and double-advance the combat cycle
+	btn:RegisterForClicks("AnyUp")
+	-- left-click is a MACRO: out of combat Bar.Refresh bakes the engine's planned
+	-- cast into it; in combat the OnClick wrap below rewrites it per click to
+	-- cycle through the class's members (see SPEC-secure-flyout)
+	btn:SetAttribute("type1", "macro")
+	-- right-click: always the 10-min single on the auto-target
 	btn:SetAttribute("type2", "spell")
+
+	-- SECURE hover: show my class panel, hide the others, and let the restricted
+	-- auto-hide close it once the cursor has left panel+button. Runs in the
+	-- restricted environment, so it works in combat — this is what makes the
+	-- fly-out usable mid-fight. Frame refs flyout1..N are wired in Bar.Create.
+	btn:SetAttribute("_onenter", [[
+		local mine = self:GetAttribute("classIndex")
+		local total = self:GetAttribute("numPanels") or 0
+		for i = 1, total do
+			local panel = self:GetFrameRef("flyout" .. i)
+			if panel then
+				if i == mine then
+					if panel:GetAttribute("active") == 1 then
+						panel:Show()
+						panel:RegisterAutoHide(]] .. FLYOUT_AUTOHIDE .. [[)
+						panel:AddToAutoHide(self)
+					end
+				else
+					panel:Hide()
+				end
+			end
+		end
+	]])
+
+	-- SECURE in-combat rebuff cycling: each combat click rewrites this button's
+	-- own macro to cast on the NEXT viable member. Targets and their spells are
+	-- baked out of combat as paired attributes — players by NAME (stable), pets
+	-- by UNIT TOKEN (pets have no reliable name targeting), and each target with
+	-- ITS OWN single (pets/overrides may differ from the class blessing). Out of
+	-- combat the snippet does nothing, so the engine's smart macro applies. The
+	-- button is registered for exactly ONE click edge (Bar.Refresh mirrors the
+	-- ActionButtonUseKeyDown cvar), so this runs once per click.
+	btn:WrapScript(btn, "OnClick", [[
+		if SecureCmdOptionParse("[combat] 1;") ~= "1" then return end
+		local total = self:GetAttribute("cycleCount") or 0
+		if total == 0 then return end
+		local step = self:GetAttribute("cycleStep") or 1
+		for _ = 1, total do
+			if step > total then step = 1 end
+			local target = self:GetAttribute("cycleName" .. step)
+			local spell = self:GetAttribute("cycleSpell" .. step)
+			step = step + 1
+			if target and spell and SecureCmdOptionParse("[@" .. target .. ",help,nodead] 1;") == "1" then
+				self:SetAttribute("macrotext1", "/cast [@" .. target .. ",help,nodead] " .. spell)
+				break
+			end
+		end
+		self:SetAttribute("cycleStep", step)
+	]])
+
 	-- wheel: cycle my class assignment (out of combat; syncs + updates window)
 	btn:EnableMouseWheel(true)
 	btn:SetScript("OnMouseWheel", function(self, delta)
@@ -714,21 +765,20 @@ local function CreateButton(index)
 	local tf, ts = btn.timer:GetFont()
 	btn.timer:SetFont(tf, (ts or 14) + 3, "THICKOUTLINE")
 
-	btn:SetScript("OnEnter", function(self)
+	-- INSECURE hover extras ride along via HookScript (SetScript would overwrite
+	-- the EnterLeave template's secure handler and kill the snippet above)
+	btn:HookScript("OnEnter", function(self)
 		local task = self.task
 		if not task then
 			return
 		end
-		-- hover opens the per-class fly-out (out of combat); keep it open while
-		-- the cursor is on the button
-		CancelClose()
-		FlyoutShow(task.classToken)
-		if flyout and flyout:IsShown() then
+		local panel = flyoutPanels[self.classIndex]
+		if panel and panel:IsShown() then
 			-- the fly-out already shows the class, its members and coverage, so
 			-- the big class tooltip would just be redundant noise on top of it
 			return
 		end
-		-- in combat the fly-out stays closed, so the tooltip is the info source
+		-- no fly-out (empty class / inactive): the tooltip is the info source
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
 		local blessing = HO.Data.blessings[task.blessingID]
 		GameTooltip:SetText(task.classToken)
@@ -757,11 +807,12 @@ local function CreateButton(index)
 			GameTooltip:AddLine(string.format(L["%d expiring soon"], task.expiring), 1, 0.85, 0.3)
 		end
 		GameTooltip:AddLine(L["mouse wheel: change my assignment"], 0.8, 0.8, 0.8)
+		GameTooltip:AddLine(L["in combat: click cycles through the class's members"], 0.8, 0.8, 0.8)
 		GameTooltip:Show()
 	end)
-	btn:SetScript("OnLeave", function()
+	btn:HookScript("OnLeave", function()
 		GameTooltip:Hide()
-		ScheduleClose() -- close the fly-out shortly unless the cursor reaches it
+		-- no close timer: the panel's restricted auto-hide closes it on its own
 	end)
 	return btn
 end
@@ -914,9 +965,7 @@ function Bar.ApplyScale()
 	end
 	local scale = HO.db.options.bar and HO.db.options.bar.scale or 1
 	bar:SetScale(scale)
-	if flyout then
-		flyout:SetScale(scale)
-	end
+	-- fly-out panels are children of the bar, so they inherit the scale
 end
 
 function Bar.Create()
@@ -949,11 +998,13 @@ function Bar.Create()
 		end
 	end)
 	handle:SetScript("OnDragStop", function()
-		if InCombatLockdown() then
-			return
-		end
+		-- ALWAYS stop the drag, even in combat: skipping this leaves the bar glued
+		-- to the cursor (it eats every click). Only the position SAVE (a SetPoint on
+		-- a frame with secure children) is unsafe in combat, so guard just that.
 		bar:StopMovingOrSizing()
-		SavePosition()
+		if not InCombatLockdown() then
+			SavePosition()
+		end
 	end)
 	handle:SetScript("OnMouseUp", function(_, mouseButton)
 		if mouseButton == "RightButton" then
@@ -976,10 +1027,22 @@ function Bar.Create()
 		GameTooltip:Hide()
 	end)
 
+	CreatePanels() -- per-class secure fly-out panels (before the buttons that reference them)
 	for i = 1, MAX_BUTTONS do
 		local btn = CreateButton(i)
 		btn:Hide()
 		buttons[i] = btn
+	end
+	-- wire every class button to every panel: the _onenter snippet needs refs to
+	-- its OWN panel (to show) and to all others (to cross-hide on switch). Frame
+	-- refs may only be created out of combat — login qualifies.
+	for i = 1, MAX_BUTTONS do
+		local btn = buttons[i]
+		btn:SetAttribute("classIndex", i)
+		btn:SetAttribute("numPanels", MAX_BUTTONS)
+		for j = 1, MAX_BUTTONS do
+			SecureHandlerSetFrameRef(btn, "flyout" .. j, flyoutPanels[j])
+		end
 	end
 	auraButton = CreateAuraButton() -- always present; follows the bar's visibility
 	-- keep the golden handle as the topmost element of the bar (above the buttons)
@@ -1033,12 +1096,16 @@ function Bar.Refresh()
 				local task = HO.Engine.tasks[btn.task.classToken]
 				if task then
 					UpdateButtonTexts(btn, task)
+					-- texture ops are not protected: keep the done-state dim live
+					btn.icon:SetDesaturated(task.spellName == nil and not task.noneAssigned)
 				end
 			end
 		end
 		RefreshAuraButton() -- icon only in combat; never touches attributes
-		-- the fly-out is closed on combat start (PLAYER_REGEN_DISABLED) and its
-		-- secure rows can't be touched in combat, so nothing to refresh here
+		-- fly-out panels stay usable in combat (secure snippets show/hide them);
+		-- their layout/attributes are frozen, but the VISUALS of shown rows are
+		-- plain textures/fontstrings — keep those tracking reality
+		FlyoutRefreshShownVisuals()
 		return
 	end
 
@@ -1061,17 +1128,70 @@ function Bar.Refresh()
 		end
 	end
 
-	local index = 0
-	for _, classToken in ipairs(CLASS_ORDER) do
+	-- class-fixed buttons: each button permanently owns its CLASS_ORDER slot; the
+	-- visible ones are compacted into consecutive bar slots here (out of combat)
+	local shown = 0
+	-- one click edge, following the user's cvar (defaults to cast-on-up). Kept in
+	-- sync out of combat so the OnClick wrap runs exactly once per click.
+	local clickEdge = (GetCVarBool and GetCVarBool("ActionButtonUseKeyDown")) and "AnyDown" or "AnyUp"
+	for i, classToken in ipairs(CLASS_ORDER) do
+		local btn = buttons[i]
 		local task = HO.Engine.tasks[classToken]
-		if task and index < MAX_BUTTONS then
-			index = index + 1
-			local btn = buttons[index]
-			btn.task = task
-			btn:SetAttribute("spell1", task.spellName)
-			btn:SetAttribute("unit1", task.unit)
+		btn.task = task
+		if task then
+			shown = shown + 1
+			PlaceButtonInSlot(btn, shown)
 			btn:SetAttribute("spell2", task.singleSpellName)
 			btn:SetAttribute("unit2", task.unit)
+			-- out-of-combat left-click: the engine's planned cast on its chosen
+			-- target. In combat the secure OnClick wrap rewrites this macro per
+			-- click to cycle the class's members, so no combat clauses are needed.
+			local macro = ""
+			if task.spellName and task.unit then
+				macro = "/cast [@" .. task.unit .. ",help,nodead] " .. task.spellName
+			end
+			btn:SetAttribute("macrotext1", macro)
+			-- bake the combat-cycle data as paired attributes, one per target:
+			--   players → by name (stable across roster shifts), with the GREATER
+			--   when the engine would use it (one cast covers the class incl. its
+			--   pets), else their OWN assigned single (overrides may differ);
+			--   pets → by unit token (no reliable name targeting), with their own
+			--   single — skipped in greater mode, which reaches them anyway
+			local blessing = HO.Data.blessings[task.blessingID]
+			local useGreater = blessing and blessing.greaterName and HO.Engine.WouldUseGreater(classToken)
+			local n = 0
+			for _, m in ipairs(HO.Engine.ClassMembers(classToken)) do
+				if n >= FLYOUT_MAX_ROWS then
+					break
+				end
+				local targetRef, targetSpell
+				if m.isPet then
+					if not useGreater then
+						local mb = m.blessingID and HO.Data.blessings[m.blessingID]
+						targetRef, targetSpell = m.unit, mb and mb.name
+					end
+				else
+					if useGreater then
+						targetRef, targetSpell = m.name, blessing.greaterName
+					else
+						local mb = m.blessingID and HO.Data.blessings[m.blessingID]
+						targetRef, targetSpell = m.name, mb and mb.name
+					end
+				end
+				if targetRef and targetSpell then
+					n = n + 1
+					btn:SetAttribute("cycleName" .. n, targetRef)
+					btn:SetAttribute("cycleSpell" .. n, targetSpell)
+				end
+			end
+			for k = n + 1, btn.cycleBaked or 0 do
+				btn:SetAttribute("cycleName" .. k, nil)
+				btn:SetAttribute("cycleSpell" .. k, nil)
+			end
+			btn.cycleBaked = n
+			btn:SetAttribute("cycleCount", n)
+			btn:SetAttribute("cycleStep", 1)
+			btn:RegisterForClicks(clickEdge)
 			btn.icon:SetTexture(task.icon)
 			-- placeholder (none) buttons show their icon at full colour; ordinary
 			-- passive tasks (nothing to cast right now) stay desaturated
@@ -1085,15 +1205,15 @@ function Bar.Refresh()
 			end
 			UpdateButtonTexts(btn, task)
 			btn:Show()
+		else
+			btn:Hide()
+			btn:SetAttribute("macrotext1", nil)
+			btn:SetAttribute("spell2", nil)
+			btn:SetAttribute("unit2", nil)
+			btn:SetAttribute("cycleCount", 0)
 		end
-	end
-	for i = index + 1, MAX_BUTTONS do
-		buttons[i]:Hide()
-		buttons[i].task = nil
-		buttons[i]:SetAttribute("spell1", nil)
-		buttons[i]:SetAttribute("unit1", nil)
-		buttons[i]:SetAttribute("spell2", nil)
-		buttons[i]:SetAttribute("unit2", nil)
+		-- (re)configure this class's fly-out panel to match (rows, size, anchor)
+		FlyoutConfigure(i, classToken, task, btn, task ~= nil)
 	end
 
 	RefreshAuraButton()
@@ -1102,13 +1222,12 @@ function Bar.Refresh()
 	-- are duties OR an aura is assigned (so the aura button is reachable to wheel)
 	local me = HO.FullName("player")
 	local hasAura = me and HO.Plan.GetAura(me)
-	if isPally and not BarOptions().hidden and (index > 0 or hasAura) then
+	if isPally and not BarOptions().hidden and (shown > 0 or hasAura) then
 		bar:Show()
 		auraButton:Show()
-		FlyoutRefresh() -- keep an open fly-out live and re-anchored
 	else
 		bar:Hide()
-		FlyoutHide() -- the bar (and its buttons) went away; close the fly-out
+		FlyoutHideAll() -- the bar (and its buttons) went away; close the fly-outs
 	end
 
 	-- a tooltip open over a button now describes freshly-reassigned data; a
@@ -1135,6 +1254,35 @@ function Bar.Refresh()
 	end
 end
 
+-- one-line-per-class diagnostic for /ho bar: why is a button/panel (not) shown,
+-- what would the combat cycle do, and what keeps a force rebuff alive
+function Bar.Debug()
+	local lines = {}
+	local forceLeft = HO.Engine.forceUntil and math.floor(HO.Engine.forceUntil - GetTime()) or 0
+	lines[#lines + 1] = "force rebuff: " .. (HO.Engine.ForceActive() and ("ACTIVE, " .. forceLeft .. "s until timeout") or "off")
+	for i, classToken in ipairs(CLASS_ORDER) do
+		local btn = buttons[i]
+		local task = HO.Engine.tasks[classToken]
+		local members = HO.Engine.ClassMembers(classToken)
+		local panel = flyoutPanels[i]
+		if task or #members > 0 or (btn and btn:IsShown()) then
+			lines[#lines + 1] = string.format(
+				"%s: task=%s btn=%s members=%d cycle=%s panel=%s reach=%d miss=%d exp=%d oor=%d",
+				classToken,
+				task and (task.noneAssigned and "none" or (task.spellName or "passive")) or "NIL",
+				(btn and btn:IsShown()) and "shown" or "hidden",
+				#members,
+				btn and tostring(btn:GetAttribute("cycleCount")) or "?",
+				panel and ((panel:GetAttribute("active") == 1) and "active" or "inactive") or "?",
+				task and (task.reachable or 0) or 0,
+				task and (task.missing or 0) or 0,
+				task and (task.expiring or 0) or 0,
+				task and (task.outOfRange or 0) or 0)
+		end
+	end
+	return lines
+end
+
 function Bar.Init()
 	Bar.Create()
 	if not ticker then
@@ -1154,5 +1302,11 @@ HO.RegisterEvent("PLAYER_REGEN_ENABLED", function()
 	Bar.Refresh()
 end)
 HO.RegisterEvent("PLAYER_REGEN_DISABLED", function()
-	FlyoutHide() -- the fly-out is an out-of-combat tool; close it when combat starts
+	-- fly-out panels intentionally stay available: the secure snippets keep
+	-- opening/closing them during combat with their pre-baked rows.
+	-- End any in-progress bar drag so it can't keep following the cursor into
+	-- combat (where OnDragStop would otherwise be unable to persist the move)
+	if bar then
+		bar:StopMovingOrSizing()
+	end
 end)

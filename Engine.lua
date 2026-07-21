@@ -256,10 +256,11 @@ function Engine.Update()
 			item.remaining = remaining
 			local blessing = HO.Data.blessings[item.blessingID]
 			item.inRange = blessing and InCastRange(blessing, item.entry.unit)
-			-- feed the fly-out's live green/red status from the same check
+			-- feed the fly-out's live green/red status + timer from the same check
 			if item.member then
 				item.member.hasBuff = has
 				item.member.inRange = item.inRange
+				item.member.remaining = remaining -- seconds left on the blessing, or nil
 			end
 			if not has then
 				if Castable(item.entry) then

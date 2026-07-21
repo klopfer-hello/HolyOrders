@@ -497,9 +497,17 @@ HO.commands["spec"] = function(rest)
 			.. (#valid > 0 and (" — valid: " .. table.concat(valid, ", ")) or ""))
 	elseif spec == "clear" then
 		HO.db.specCache[target] = nil
+		if HO.db.specManual then
+			HO.db.specManual[target] = nil -- back to auto-inference
+		end
 		HO.Print(target .. " spec tag cleared")
 	else
-		local ok = false
+		-- "other"/"dps" is a durable NOT-any-special-spec tag (e.g. a dps warrior),
+		-- there to overrule a bad auto-inference like a false "protection"
+		if spec == "dps" then
+			spec = "other"
+		end
+		local ok = (spec == "other" and #valid > 0)
 		for _, s in ipairs(valid) do
 			if s == spec then
 				ok = true
@@ -507,10 +515,12 @@ HO.commands["spec"] = function(rest)
 		end
 		if not ok then
 			HO.Print("invalid spec for " .. entry.class
-				.. (#valid > 0 and (" — valid: " .. table.concat(valid, ", ")) or " (no spec rules for this class)"))
+				.. (#valid > 0 and (" — valid: " .. table.concat(valid, ", ") .. ", other") or " (no spec rules for this class)"))
 			return
 		end
 		HO.db.specCache[target] = spec
+		HO.db.specManual = HO.db.specManual or {}
+		HO.db.specManual[target] = true -- authoritative: never re-inspected/overwritten
 		HO.Print(target .. " tagged as " .. spec)
 		-- share the tag so every client computes the same tank set
 		if HO.Comm then

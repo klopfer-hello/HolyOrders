@@ -858,18 +858,32 @@ function Window.Refresh()
 								local flagged = HO.Plan.ToggleTank(entry.name)
 								HO.Print(entry.name .. (flagged and " flagged as tank" or " unflagged as tank"))
 							else
-								-- cycle spec tag: none -> spec1 -> spec2 -> none
-								local specs = HO.Planner.ValidSpecs(entry.class)
-								if #specs > 0 then
+								-- cycle spec tag: none -> spec1..specN -> other -> none.
+								-- "other" is a real, durable tag ("none of the special
+								-- specs", e.g. a dps warrior): it pins the member as
+								-- NOT-protection so a bad auto-inference can be overruled.
+								local ring = {}
+								for _, s in ipairs(HO.Planner.ValidSpecs(entry.class)) do
+									ring[#ring + 1] = s
+								end
+								if #ring > 0 then
+									ring[#ring + 1] = "other"
 									local cur = HO.db.specCache[entry.name]
-									local nextSpec = specs[1]
-									for i, s in ipairs(specs) do
+									local nextSpec = ring[1]
+									for i, s in ipairs(ring) do
 										if s == cur then
-											nextSpec = specs[i + 1]
+											nextSpec = ring[i + 1]
 											break
 										end
 									end
 									HO.db.specCache[entry.name] = nextSpec
+									-- a hand-set tag is authoritative (never re-inspected);
+									-- cycling back to none returns it to auto-inference
+									HO.db.specManual = HO.db.specManual or {}
+									HO.db.specManual[entry.name] = nextSpec and true or nil
+									if HO.Comm and HO.Comm.SendSpecTag and nextSpec then
+										HO.Comm.SendSpecTag(entry.name, nextSpec)
+									end
 								end
 							end
 							RefreshAll()

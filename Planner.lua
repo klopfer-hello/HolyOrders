@@ -434,7 +434,22 @@ local function RunCore(pallys)
 	for _, entry in ipairs(sortedUnits) do
 		if not entry.isPet and entry.name and not IsTankEntry(plan, entry) then
 			if solo and isRaid then
-				-- solo raid: non-tanks keep the Salvation plan, no preference singles
+				-- solo raid defaults every non-tank to Salvation. Still honor an
+				-- EXPLICIT buff request (not the default preference chain) as a single
+				-- override, so a member who asked for something specific gets it
+				-- instead of Salvation.
+				local req = HO.Comm and HO.Comm.requests and HO.Comm.requests[entry.name]
+				if type(req) == "table" and not HasOverrideFor(plan, entry.name) then
+					for _, pref in ipairs(req) do
+						if HO.Data.IsEligible(entry.class, pref, false) then
+							local caster = NextCaster(pref, entry.class)
+							if caster then
+								AddAutoOverride(plan, caster, entry.name, pref)
+								break
+							end
+						end
+					end
+				end
 			elseif not HasOverrideFor(plan, entry.name) then
 				-- give the member the best preference they can actually get: walk
 				-- the chain in priority order. If the class already receives a

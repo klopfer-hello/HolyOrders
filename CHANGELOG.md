@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-07-22
+
+Sync protocol stays v4 — compatible with 0.17.x–0.22.x.
+
+### Added
+- Right-click on a class button now always casts the **Greater** blessing of
+  that class's duty (whole class in one cast; also works as a re-buff when
+  everyone is covered). It falls back to the 10-min single when the greater
+  rank is unknown or no Symbol of Kings is in the bags; the tooltip shows
+  which one it will be. Per-member singles stay available in the fly-out.
+- Party role markers count as tanks: a member marked with the role-check
+  tank icon (the shield) is now detected in parties and raids alike — e.g. a
+  feral druid tank no longer receives Salvation. Role changes apply
+  immediately.
+- Ungrouped auto-assign now proposes a talent-aware **self** blessing (holy →
+  Wisdom, retribution → Might, protection → Kings) instead of a pointless
+  solo Salvation. Solo-paladin Salvation coverage in groups is unchanged.
+
+### Changed
+- New handle controls: left-click opens the assignment window, right-click
+  toggles the force rebuff, Ctrl-drag moves the bar, shift-right-click opens
+  the options. The handle tooltip is restyled as "[Gesture] action" lines
+  and shows a red status line while a force rebuff is running.
+
 ## [0.22.0] - 2026-07-22
 
 Sync protocol stays v4 — compatible with 0.17.x–0.21.x.

@@ -112,8 +112,15 @@ local function Available(pallyName, blessingID)
 	if peer and peer.caps and peer.caps[blessingID] then
 		return peer.caps[blessingID].known
 	end
-	-- no HolyOrders on that paladin: assume everything but talent-gated Sanctuary
-	return blessingID ~= SANCTUARY
+	-- no HolyOrders on that paladin: assume everything but talent-gated
+	-- Sanctuary. Exception: a paladin tagged protection (manually, synced or
+	-- inspect-inferred) is exactly the build that has Sanctuary — unlock it, so
+	-- it stays assignable to addon-less protection paladins.
+	if blessingID ~= SANCTUARY then
+		return true
+	end
+	local spec = HO.db.specCache[pallyName] or (HO.Comm and HO.Comm.specSync[pallyName])
+	return spec == "protection"
 end
 Planner.IsAvailable = Available
 

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-07-22
+
+Sync protocol stays v4 — compatible with 0.17.x–0.23.x.
+
+### Added
+- Configurable fly-out direction: the member panel can open left (default),
+  right, up or down of its class button — Options cycle button or
+  `/ho bar flyout <direction>`.
+- Sanctuary is now assignable to a paladin without the addon once they are
+  tagged as protection (manually, synced or inspect-inferred) — exactly the
+  build that has the talent. Previously it was always locked for them.
+
+### Changed
+- Buff requests no longer colour the cast bar: the per-paladin yellow
+  "unmet request" marker was misleading (it stayed yellow on every other
+  paladin even when the wish was already fulfilled). Requests feed the
+  auto-planner and show in the assignment window; the fly-out keeps a small
+  informational badge that now turns greenish once the member actually has
+  the requested blessing — from any paladin.
+
+### Fixed
+- The request window no longer overflows with long localized blessing
+  names: the preference line wraps and the window grows to fit.
+
 ## [0.23.0] - 2026-07-22
 
 Sync protocol stays v4 — compatible with 0.17.x–0.22.x.

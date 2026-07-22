@@ -789,13 +789,15 @@ local function CreateButton(classIndex)
 		end
 		if task.spellName and task.unitName then
 			GameTooltip:AddLine(string.format(L["left: %s on %s"], task.spellName, task.unitName), 1, 1, 1)
-			if task.singleSpellName and task.singleSpellName ~= task.spellName then
-				GameTooltip:AddLine(string.format(L["right: %s (single)"], task.singleSpellName), 1, 1, 1)
-			end
 		elseif task.missing > 0 then
 			GameTooltip:AddLine(L["all remaining targets are out of range"], 1, 0.6, 0.3)
 		else
 			GameTooltip:AddLine(string.format(L["%s — all covered"], blessing and (blessing.name or blessing.key) or "?"), 0.6, 1, 0.6)
+		end
+		if self.rightSpell then
+			GameTooltip:AddLine(string.format(
+				self.rightIsGreater and L["right-click: %s (whole class, 1 Symbol)"] or L["right: %s (single)"],
+				self.rightSpell), 1, 1, 1)
 		end
 		if task.outOfRange and task.outOfRange > 0 then
 			GameTooltip:AddLine(string.format(L["%d out of range (skipped)"], task.outOfRange), 1, 0.6, 0.3)
@@ -988,12 +990,16 @@ function Bar.Create()
 	handle.tex = handle:CreateTexture(nil, "ARTWORK")
 	handle.tex:SetAllPoints()
 	handle.tex:SetTexture(HANDLE_TEX)
+	-- true while (and briefly after) a ctrl-drag, so releasing the drag is never
+	-- mistaken for a click that would open the assignment window
+	local handleDragging = false
 	handle:SetScript("OnDragStart", function()
 		if InCombatLockdown() then
 			return -- moving the protected bar in combat would taint it
 		end
 		-- hold Ctrl to move; prevents accidental drags without a lock toggle
 		if IsControlKeyDown() then
+			handleDragging = true
 			bar:StartMoving()
 		end
 	end)
@@ -1005,22 +1011,38 @@ function Bar.Create()
 		if not InCombatLockdown() then
 			SavePosition()
 		end
+		C_Timer.After(0.1, function()
+			handleDragging = false
+		end)
 	end)
 	handle:SetScript("OnMouseUp", function(_, mouseButton)
-		if mouseButton == "RightButton" then
-			if IsShiftKeyDown() then
+		if mouseButton == "LeftButton" then
+			-- ctrl-left is the move gesture; a bare left click opens the window
+			if not IsControlKeyDown() and not handleDragging then
 				HO.Window.Toggle()
+			end
+		elseif mouseButton == "RightButton" then
+			if IsShiftKeyDown() then
+				HO.Options.Toggle()
 			else
 				Bar.ToggleForceRebuff()
 			end
 		end
 	end)
+	-- "[Gesture] action" hint line: gesture in bracket-gold, action in white
+	local function HandleHint(gesture, action)
+		return "|cff" .. HO.Colors.hex("goldBright") .. "[" .. L[gesture] .. "]|r " .. L[action]
+	end
 	handle:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
 		GameTooltip:SetText("HolyOrders")
-		GameTooltip:AddLine(L["hold Ctrl and drag to move"], 1, 1, 1)
-		GameTooltip:AddLine(L["right-click: force rebuff (pre-pull refresh)"], 1, 1, 1)
-		GameTooltip:AddLine(L["shift-right-click: assignment window"], 1, 1, 1)
+		GameTooltip:AddLine(HandleHint("Left-Click", "Open the assignment window"), 1, 1, 1)
+		GameTooltip:AddLine(HandleHint("Right-Click", "Toggle the force rebuff (pre-pull refresh)"), 1, 1, 1)
+		GameTooltip:AddLine(HandleHint("Ctrl-Left-Drag", "Move the cast bar"), 1, 1, 1)
+		GameTooltip:AddLine(HandleHint("Shift-Right-Click", "Open the options"), 1, 1, 1)
+		if HO.Engine.ForceActive() then
+			GameTooltip:AddLine("|cff" .. HO.Colors.hex("red") .. L["force rebuff is running — right-click cancels"] .. "|r")
+		end
 		GameTooltip:Show()
 	end)
 	handle:SetScript("OnLeave", function()
@@ -1134,6 +1156,7 @@ function Bar.Refresh()
 	-- one click edge, following the user's cvar (defaults to cast-on-up). Kept in
 	-- sync out of combat so the OnClick wrap runs exactly once per click.
 	local clickEdge = (GetCVarBool and GetCVarBool("ActionButtonUseKeyDown")) and "AnyDown" or "AnyUp"
+	local haveSymbols = HO.Data.SymbolCount() > 0 -- gates the right-click greater
 	for i, classToken in ipairs(CLASS_ORDER) do
 		local btn = buttons[i]
 		local task = HO.Engine.tasks[classToken]
@@ -1141,8 +1164,29 @@ function Bar.Refresh()
 		if task then
 			shown = shown + 1
 			PlaceButtonInSlot(btn, shown)
-			btn:SetAttribute("spell2", task.singleSpellName)
-			btn:SetAttribute("unit2", task.unit)
+			local blessing = HO.Data.blessings[task.blessingID]
+			-- right-click: ALWAYS the greater blessing of this duty (one cast covers
+			-- the whole class) when it is known and a Symbol of Kings is on hand —
+			-- falls back to the single otherwise. Anchored to the engine's target or
+			-- any class member, so it also works as a re-buff when all are covered.
+			local rightSpell = task.singleSpellName or (blessing and blessing.name)
+			local rightIsGreater = false
+			if blessing and blessing.greaterKnown and blessing.greaterName and haveSymbols then
+				rightSpell = blessing.greaterName
+				rightIsGreater = true
+			end
+			local rightUnit = task.unit
+			if not rightUnit then
+				for _, m in ipairs(HO.Engine.ClassMembers(classToken)) do
+					if not m.isPet and m.unit then
+						rightUnit = m.unit
+						break
+					end
+				end
+			end
+			btn.rightSpell, btn.rightIsGreater = rightSpell, rightIsGreater
+			btn:SetAttribute("spell2", rightSpell)
+			btn:SetAttribute("unit2", rightUnit)
 			-- out-of-combat left-click: the engine's planned cast on its chosen
 			-- target. In combat the secure OnClick wrap rewrites this macro per
 			-- click to cycle the class's members, so no combat clauses are needed.
@@ -1157,7 +1201,6 @@ function Bar.Refresh()
 			--   pets), else their OWN assigned single (overrides may differ);
 			--   pets → by unit token (no reliable name targeting), with their own
 			--   single — skipped in greater mode, which reaches them anyway
-			local blessing = HO.Data.blessings[task.blessingID]
 			local useGreater = blessing and blessing.greaterName and HO.Engine.WouldUseGreater(classToken)
 			local n = 0
 			for _, m in ipairs(HO.Engine.ClassMembers(classToken)) do
@@ -1207,6 +1250,7 @@ function Bar.Refresh()
 			btn:Show()
 		else
 			btn:Hide()
+			btn.rightSpell, btn.rightIsGreater = nil, nil
 			btn:SetAttribute("macrotext1", nil)
 			btn:SetAttribute("spell2", nil)
 			btn:SetAttribute("unit2", nil)

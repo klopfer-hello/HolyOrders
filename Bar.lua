@@ -32,11 +32,8 @@ local BTN_FRAME = "Interface\\AddOns\\HolyOrders\\Icons\\ButtonFrame"
 local UPDATE_INTERVAL = 1.0
 local NONE_ICON = "Interface\\Buttons\\UI-GroupLoot-Pass-Up" -- "no aura" placeholder (matches the window)
 -- colour language for status borders: green = everyone has their assigned buff,
--- red = someone in range is missing it, amber = only expiring/out-of-range, and
--- YELLOW = a member requested a (different) buff that is not fulfilled yet.
--- Precedence on the class button: red missing > yellow request > amber > green
--- (a genuine missing buff is more urgent than a preference request).
-local REQUEST_R, REQUEST_G, REQUEST_B = HO.Colors.rgb("yellow") -- unmet buff request (shared palette)
+-- red = someone in range is missing it, amber = only expiring/out-of-range.
+-- Buff requests never colour the bar (they feed auto + the assignment window).
 
 local CLASS_ORDER = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
 
@@ -180,29 +177,18 @@ local function SetButtonBorder(btn, r, g, b)
 	end
 end
 
--- does any member of this class have an UNMET request (a requested blessing that
--- differs from what this paladin assigns them)? Read-only over the display list.
-local function ClassHasUnmetRequest(classToken)
-	for _, m in ipairs(HO.Engine.ClassMembers(classToken)) do
-		if m.requestID and m.blessingID ~= m.requestID then
-			return true
-		end
-	end
-	return false
-end
-
--- one class duty's status: "red" (someone in range is missing), "yellow" (a
--- request, or expiring/out of range), or "green" (all covered)
+-- one class duty's status: "red" (someone in range is missing), "yellow"
+-- (expiring/out of range), or "green" (all covered). Requests deliberately do
+-- NOT colour anything here: a per-paladin "unmet request" would mislead —
+-- another paladin may fulfil it, or a lower-ranked wish may already be active.
+-- Requests feed the auto-planner and the assignment window instead.
 local function TaskSeverity(task)
 	if task.noneAssigned then
-		return ClassHasUnmetRequest(task.classToken) and "yellow" or "green"
+		return "green"
 	end
 	local inRangeMissing = task.missing - (task.outOfRange or 0)
 	if inRangeMissing > 0 then
 		return "red"
-	end
-	if ClassHasUnmetRequest(task.classToken) then
-		return "yellow"
 	end
 	if task.expiring > 0 or (task.outOfRange or 0) > 0 then
 		return "yellow"
@@ -243,24 +229,14 @@ local function UpdateButtonTexts(btn, task)
 	-- in-range missing counts toward "red"; a purely out-of-range gap is amber,
 	-- since it is not something you can act on right now
 	local inRangeMissing = task.missing - (task.outOfRange or 0)
-	-- yellow marker: any class member wants a buff this paladin isn't giving them
-	local unmetRequest = ClassHasUnmetRequest(task.classToken)
 	-- tint the backdrop with SetVertexColor (NOT SetColorTexture, which would
 	-- replace the WHITE8x8 texture and drop the rounded corner mask)
 	if task.noneAssigned then
 		btn.bg:SetVertexColor(0, 0, 0, 0.65)
-		-- even a none-assigned class can carry a request the paladin should notice
-		if unmetRequest then
-			SetButtonBorder(btn, REQUEST_R, REQUEST_G, REQUEST_B) -- yellow
-		else
-			SetButtonBorder(btn) -- no assignment: no status
-		end
+		SetButtonBorder(btn) -- no assignment: no status
 	elseif inRangeMissing > 0 then
 		btn.bg:SetVertexColor(0.55, 0.10, 0.10, 0.85)
-		SetButtonBorder(btn, 0.85, 0.15, 0.15) -- red (outranks a request)
-	elseif unmetRequest then
-		btn.bg:SetVertexColor(0, 0, 0, 0.65)
-		SetButtonBorder(btn, REQUEST_R, REQUEST_G, REQUEST_B) -- yellow: unmet request
+		SetButtonBorder(btn, 0.85, 0.15, 0.15) -- red
 	elseif task.expiring > 0 or (task.outOfRange or 0) > 0 then
 		btn.bg:SetVertexColor(0.55, 0.45, 0.05, 0.85)
 		SetButtonBorder(btn, 0.90, 0.70, 0.10) -- amber
@@ -356,20 +332,19 @@ local function UpdateRowStatus(row, m)
 		row.icon:SetDesaturated(false)
 		row.icon:SetAlpha(1)
 	end
-	-- request badge (right side): the requested blessing's icon. Dimmed/greenish
-	-- once honoured (assigned == requested), full colour while still unmet. An
-	-- unmet request also paints a YELLOW row border, overriding the green/red
-	-- status border above so the paladin notices which member wants a buff.
+	-- request badge (right side): the requested blessing's icon — INFORMATIONAL
+	-- only, it never colours the row border (requests feed the auto-planner and
+	-- the assignment window). Greenish once the member actually HAS the requested
+	-- blessing (from any paladin), full colour while they don't.
 	if m.requestID then
 		local reqBlessing = HO.Data.blessings[m.requestID]
 		row.reqBadge:SetTexture((reqBlessing and reqBlessing.icon) or NONE_ICON)
-		if m.blessingID == m.requestID then
+		if m.requestSatisfied then
 			row.reqBadge:SetVertexColor(0.4, 1, 0.4) -- satisfied: greenish
 			row.reqBadge:SetAlpha(0.7)
 		else
 			row.reqBadge:SetVertexColor(1, 1, 1)
 			row.reqBadge:SetAlpha(1)
-			SetRowBorder(row, HO.Colors.rgb("yellow")) -- yellow: unmet request
 		end
 		row.reqBadge:Show()
 	else

@@ -166,8 +166,16 @@ local function Create()
 	hint:SetText(L["click blessings in priority order — click again to remove"])
 
 	local width = PAD * 2 + n * (BTN_SIZE + BTN_GAP) + CLEAR_W
-	local height = 8 + TITLE_H + 6 + BTN_SIZE + 8 + 14 + 14 + PAD
-	frame:SetSize(width, height)
+	-- long localized blessing names overflow the fixed width: bound both text
+	-- lines to the window's inner width and let them wrap; Refresh grows the
+	-- window height to fit the wrapped status line
+	statusText:SetWidth(width - PAD * 2)
+	statusText:SetWordWrap(true)
+	hint:SetWidth(width - PAD * 2)
+	hint:SetWordWrap(true)
+	frame.hint = hint
+	frame.topHeight = 8 + TITLE_H + 6 + BTN_SIZE + 8 -- everything above the status line
+	frame:SetSize(width, frame.topHeight + 14 + 14 + PAD)
 
 	Request.ApplyScale() -- apply the saved window scale on first open
 end
@@ -217,6 +225,9 @@ function Request.Refresh()
 	else
 		statusText:SetText(L["no request"])
 	end
+	-- grow the window to fit the wrapped status line + hint (long localized
+	-- blessing names span multiple lines)
+	frame:SetHeight(frame.topHeight + statusText:GetStringHeight() + 3 + frame.hint:GetStringHeight() + PAD)
 end
 
 function Request.Toggle()

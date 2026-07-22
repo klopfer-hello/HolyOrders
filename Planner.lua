@@ -44,12 +44,35 @@ end
 
 -- preference chain (SPEC-planner §6b) minus the manual-override level, which
 -- the planner respects separately
+-- my own spec from my own talent distribution — no inspect needed, so the
+-- player's row is always spec-aware even before anyone tags them
+local OWN_TAB_SPECS = { "holy", "protection", "retribution" }
+local function OwnSpecTag()
+	if select(2, UnitClass("player")) ~= "PALADIN" then
+		return nil
+	end
+	local best, bestPoints, total = nil, 0, 0
+	for tab, points in ipairs(HO.Talents.tabPoints) do
+		total = total + points
+		if points > bestPoints then
+			best, bestPoints = tab, points
+		end
+	end
+	if not best or total < 5 then
+		return nil -- unspecced/ambiguous: fall through to the class default chain
+	end
+	return OWN_TAB_SPECS[best]
+end
+
 function Planner.ResolvePreference(name, classToken, isTank)
 	if isTank then
 		return { KINGS } -- tank protection beats any liking or request
 	end
 	local prefs = HO.db.prefs[classToken] or DEFAULT_PREFS[classToken]
 	local spec = name and HO.db.specCache[name]
+	if not spec and name and name == HO.FullName("player") then
+		spec = OwnSpecTag()
+	end
 	local chain = (prefs and ((spec and prefs[spec]) or prefs.default)) or { KINGS }
 	-- ordered chain, highest priority first, duplicates dropped keeping the earliest:
 	--   1) the member's own ranked buff requests (their explicit wish)
@@ -239,12 +262,26 @@ local function RunCore(pallys)
 
 	-- 1) blessing coverage: one blessing per paladin, deterministic
 	local assigned = {} -- [pallyName] = blessingID
-	if solo then
-		-- solo mode, raid AND party alike: Salvation on everyone. Tanks are
-		-- protected by the step-2/3 rules (their classes fall to singles that skip
-		-- them, and they receive Kings), pets get the pet blessing through their
-		-- owner's class row, and explicit member requests still win via the
-		-- step-4 request pass.
+	if solo and not IsInGroup() then
+		-- truly alone: Salvation on yourself is pointless (threat reduction only
+		-- matters with a tank). Walk my own preference chain instead — talent-aware
+		-- via the own-spec fallback in ResolvePreference, so a holy build proposes
+		-- Wisdom, retribution Might, protection Kings; never Salvation.
+		local me = pallys[1]
+		local myEntry = HO.Roster.byName[me]
+		local isTank = (myEntry and IsTankEntry(plan, myEntry)) and true or false
+		for _, id in ipairs(Planner.ResolvePreference(me, "PALADIN", isTank)) do
+			if id ~= SALVATION and HO.Data.IsEligible("PALADIN", id, isTank) and Available(me, id) then
+				HO.Plan.SetClassAssignment(me, "PALADIN", id, "auto")
+				break
+			end
+		end
+	elseif solo then
+		-- solo paladin in a group, raid AND party alike: Salvation on everyone.
+		-- Tanks are protected by the step-2/3 rules (their classes fall to singles
+		-- that skip them, and they receive Kings), pets get the pet blessing
+		-- through their owner's class row, and explicit member requests still win
+		-- via the step-4 request pass.
 		assigned[pallys[1]] = SALVATION
 	elseif isRaid then
 		local used = {}

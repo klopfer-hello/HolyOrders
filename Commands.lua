@@ -342,8 +342,21 @@ HO.commands["bar"] = function(rest)
 		else
 			HO.Print("usage: /ho bar grow left|right|up|down")
 		end
+	elseif sub:match("^flyout") then
+		local dir = sub:match("^flyout%s+(%a+)$")
+		if dir == "left" or dir == "right" or dir == "up" or dir == "down" then
+			opts.flyout = dir
+			if InCombatLockdown() then
+				HO.Print("fly-out opens " .. dir .. " (applies after combat)")
+			else
+				HO.Bar.Refresh()
+				HO.Print("fly-out opens " .. dir)
+			end
+		else
+			HO.Print("usage: /ho bar flyout left|right|up|down")
+		end
 	else
-		HO.Print("usage: /ho bar show|hide|reset|debug|grow <dir>  (hold Ctrl and drag the handle to move)")
+		HO.Print("usage: /ho bar show|hide|reset|debug|grow <dir>|flyout <dir>  (hold Ctrl and drag the handle to move)")
 	end
 end
 

@@ -571,10 +571,21 @@ local function FlyoutConfigure(classIndex, classToken, task, anchorBtn, anchorSh
 		panel.rows[i]:Hide()
 	end
 	panel:SetHeight(FLYOUT_HEADER + count * FLYOUT_ROW_H + FLYOUT_FOOTER)
-	-- fly out to the LEFT of the class button (top-aligned), like the classic
-	-- paladin buff addons; SetClampedToScreen keeps it on-screen near an edge
+	-- fly-out direction is user-configurable (default: to the LEFT of the class
+	-- button, like the classic paladin buff addons); SetClampedToScreen keeps it
+	-- on-screen near an edge. Anchoring is out-of-combat only, so the option
+	-- takes effect on the next refresh tick.
 	panel:ClearAllPoints()
-	panel:SetPoint("TOPRIGHT", anchorBtn, "TOPLEFT", -4, 0)
+	local dir = BarOptions().flyout or "left"
+	if dir == "right" then
+		panel:SetPoint("TOPLEFT", anchorBtn, "TOPRIGHT", 4, 0)
+	elseif dir == "up" then
+		panel:SetPoint("BOTTOMLEFT", anchorBtn, "TOPLEFT", 0, 4)
+	elseif dir == "down" then
+		panel:SetPoint("TOPLEFT", anchorBtn, "BOTTOMLEFT", 0, -4)
+	else
+		panel:SetPoint("TOPRIGHT", anchorBtn, "TOPLEFT", -4, 0)
+	end
 	panel:SetAttribute("active", 1)
 end
 

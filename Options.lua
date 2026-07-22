@@ -7,6 +7,7 @@ local L = HO.L
 
 local PET_CYCLE = { 2, 1, 3 } -- Might > Wisdom > Kings
 local GROW_CYCLE = { "right", "left", "down", "up" }
+local FLYOUT_CYCLE = { "left", "right", "up", "down" }
 local REFRESH_INTERVAL = 1.0
 local LABEL_WIDTH = 480 -- wrap long (German) labels instead of running off the panel
 
@@ -50,6 +51,7 @@ local function Refresh()
 	local blessing = HO.Data.blessings[o.pets.blessing or 2]
 	panel.petBtn:SetText(string.format(L["Pet blessing: %s"], blessing and (blessing.name or blessing.key) or "?"))
 	panel.growBtn:SetText(string.format(L["Bar grows: %s"], o.bar.grow or "right"))
+	panel.flyoutBtn:SetText(string.format(L["Fly-out opens: %s"], o.bar.flyout or "left"))
 	panel.barScaleBtn:SetText(string.format(L["Cast bar scale: %d%%"], math.floor((o.bar.scale or 1) * 100 + 0.5)))
 	panel.winScaleBtn:SetText(string.format(L["Window scale: %d%%"], math.floor(((o.window and o.window.scale) or 1) * 100 + 0.5)))
 end
@@ -160,6 +162,26 @@ function Options.Create()
 		o.pets.blessing = nextID
 		Refresh()
 		RefreshAll()
+	end)
+
+	-- fly-out direction: which side of a class button the member panel opens on
+	panel.flyoutBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+	panel.flyoutBtn:SetSize(240, 22)
+	panel.flyoutBtn:SetPoint("TOPLEFT", 16, -(buttonsTop + 112))
+	panel.flyoutBtn:SetScript("OnClick", function()
+		local o = Options.Ensure()
+		local nextDir = FLYOUT_CYCLE[1]
+		for i, dir in ipairs(FLYOUT_CYCLE) do
+			if dir == (o.bar.flyout or "left") then
+				nextDir = FLYOUT_CYCLE[i + 1] or FLYOUT_CYCLE[1]
+				break
+			end
+		end
+		o.bar.flyout = nextDir
+		Refresh()
+		if HO.Bar and HO.Bar.Refresh then
+			HO.Bar.Refresh() -- re-anchors the panels out of combat
+		end
 	end)
 
 	-- cast bar scale: cycles a preset list; the bar is a protected frame, so

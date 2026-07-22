@@ -55,6 +55,14 @@ local function AddEntry(unit, ownerEntry)
 	return entry
 end
 
+-- the group-frame role marker (shield icon from the role check); distinct from
+-- the raid-only MAINTANK assignment and available in plain parties, so it is the
+-- way a 5-man tank is usually marked. Defensive: the API exists on 2.5.6, but
+-- guard anyway per project rule.
+local function HasTankRoleIcon(unit)
+	return UnitGroupRolesAssigned and UnitGroupRolesAssigned(unit) == "TANK" or false
+end
+
 function Roster.Rebuild()
 	wipe(Roster.units)
 	wipe(Roster.byName)
@@ -68,7 +76,7 @@ function Roster.Rebuild()
 				local _, rank, subgroup, _, _, _, _, _, _, role = GetRaidRosterInfo(i)
 				entry.subgroup = subgroup or 1
 				entry.rank = rank or 0 -- 2 = leader, 1 = assist
-				entry.tankRole = (role == "MAINTANK")
+				entry.tankRole = (role == "MAINTANK") or HasTankRoleIcon("raid" .. i)
 				pets["raidpet" .. i] = entry
 			end
 		end
@@ -76,7 +84,7 @@ function Roster.Rebuild()
 		local playerEntry = AddEntry("player")
 		if playerEntry then
 			playerEntry.rank = UnitIsGroupLeader("player") and 2 or 0
-			playerEntry.tankRole = GetPartyAssignment("MAINTANK", "player") and true or false
+			playerEntry.tankRole = (GetPartyAssignment("MAINTANK", "player") and true or false) or HasTankRoleIcon("player")
 			pets["pet"] = playerEntry
 		end
 		for i = 1, MAX_PARTY_MEMBERS do
@@ -84,7 +92,7 @@ function Roster.Rebuild()
 			local entry = AddEntry(unit)
 			if entry then
 				entry.rank = UnitIsGroupLeader(unit) and 2 or 0
-				entry.tankRole = GetPartyAssignment("MAINTANK", unit) and true or false
+				entry.tankRole = (GetPartyAssignment("MAINTANK", unit) and true or false) or HasTankRoleIcon(unit)
 				pets["partypet" .. i] = entry
 			end
 		end
@@ -146,3 +154,5 @@ end
 HO.RegisterEvent("GROUP_ROSTER_UPDATE", Roster.Queue)
 HO.RegisterEvent("UNIT_PET", Roster.Queue)
 HO.RegisterEvent("PLAYER_ENTERING_WORLD", Roster.Queue)
+-- role-check results (the tank/healer/damage markers) feed tank detection
+HO.RegisterEvent("PLAYER_ROLES_ASSIGNED", Roster.Queue)

@@ -360,6 +360,29 @@ HO.commands["bar"] = function(rest)
 	end
 end
 
+-- UI skin: chrome is built at load, so switching prompts for a reload
+HO.commands["skin"] = function(rest)
+	local s = rest:match("^%s*(%S*)"):lower()
+	local valid = false
+	for _, name in ipairs(HO.Skin.SKINS) do
+		if s == name then
+			valid = true
+			break
+		end
+	end
+	if valid then
+		HO.db.options.skin = s
+		HO.Print("skin set to " .. s)
+		HO.Options.PromptSkinReload()
+	else
+		-- the option is what will load next time; "active" is what THIS session
+		-- resolved at startup — differing values mean a reload is still pending
+		HO.Print("usage: /ho skin " .. table.concat(HO.Skin.SKINS, "|")
+			.. " — option: " .. (HO.db.options.skin or "default")
+			.. ", active now: " .. (HO.Skin.current or "?"))
+	end
+end
+
 HO.commands["rebuff"] = function()
 	HO.Bar.ToggleForceRebuff()
 end
@@ -700,6 +723,7 @@ local DESC = {
 	rebuff = "toggle pre-pull force rebuff",
 	nosalv = "toggle no-Salvation encounter mode",
 	plan = "manage stored roster plans",
+	skin = "switch the UI skin",
 	assign = "set a class blessing assignment",
 	override = "set a per-player blessing override",
 	prefs = "list or clear remembered member blessings",

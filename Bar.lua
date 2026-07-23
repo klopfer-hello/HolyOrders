@@ -13,6 +13,10 @@ local GAP = 5
 local HANDLE_WIDTH = 22 -- gem-node thickness (along the bar)
 local HANDLE_ACROSS = 44 -- gem-node length (across the bar); 2:1 keeps the gem round
 local MAX_BUTTONS = 9
+-- legacy skin: the bar is a vertical stack of WIDE rows (icon left, timer right)
+-- with class-coloured tooltip backdrops and a small round status ball as handle
+local LEGACY_W = 100
+local LEGACY_HANDLE = 16
 
 -- handle "gem node" sprite: a golden rail with a faceted gem knob. The gem
 -- colour is the status light — a red-gem variant is swapped in while a force
@@ -25,10 +29,46 @@ local HANDLE_TEX = "Interface\\AddOns\\HolyOrders\\Icons\\GemHandle" -- blue
 local HANDLE_TEX_ACTIVE = "Interface\\AddOns\\HolyOrders\\Icons\\GemHandleActive" -- red
 local HANDLE_TEX_GREEN = "Interface\\AddOns\\HolyOrders\\Icons\\GemHandleGreen"
 local HANDLE_TEX_YELLOW = "Interface\\AddOns\\HolyOrders\\Icons\\GemHandleYellow"
+-- handle status per skin: gem sprites (default), stock round indicators
+-- (legacy's little status ball) or a flat tinted block (forga)
+local HANDLE_SPRITES = { rest = HANDLE_TEX, red = HANDLE_TEX_ACTIVE, yellow = HANDLE_TEX_YELLOW, green = HANDLE_TEX_GREEN }
+local HANDLE_DOTS = {
+	rest = "Interface\\COMMON\\Indicator-Gray",
+	red = "Interface\\COMMON\\Indicator-Red",
+	yellow = "Interface\\COMMON\\Indicator-Yellow",
+	green = "Interface\\COMMON\\Indicator-Green",
+}
+local WHITE8 = "Interface\\Buttons\\WHITE8x8"
 
--- rounded-button textures: a tintable frame ring and a corner mask (bundled TGA)
-local BTN_MASK = "Interface\\AddOns\\HolyOrders\\Icons\\ButtonMask"
-local BTN_FRAME = "Interface\\AddOns\\HolyOrders\\Icons\\ButtonFrame"
+-- the wide-row legacy bar only stacks vertically: a horizontal grow option is
+-- treated as "down" there, every other skin honours the option as-is
+local function EffectiveGrow()
+	local grow = HO.db.options.bar and HO.db.options.bar.grow or "right"
+	if HO.Skin.WideBar() and (grow == "left" or grow == "right") then
+		return "down" -- the wide-row bar only stacks vertically
+	end
+	return grow
+end
+
+-- per-skin bar geometry: cross-axis button extent and the handle's along-axis size
+local function ButtonCross()
+	return HO.Skin.WideBar() and LEGACY_W or BUTTON_SIZE
+end
+
+local STRIP_HANDLE_HIT = 14 -- strip handle: grab area along the bar; the strip is slimmer
+
+local function HandleAlong()
+	local style = HO.Skin.HandleStyle()
+	if style == "dot" then
+		return LEGACY_HANDLE + 2
+	elseif style == "strip" then
+		return STRIP_HANDLE_HIT
+	end
+	return HANDLE_WIDTH
+end
+
+-- icon chrome (corner mask + tintable status ring) comes from HO.Skin: rounded
+-- on the default skin, square on the alternatives
 local UPDATE_INTERVAL = 1.0
 local NONE_ICON = "Interface\\Buttons\\UI-GroupLoot-Pass-Up" -- "no aura" placeholder (matches the window)
 -- colour language for status borders: green = everyone has their assigned buff,
@@ -47,7 +87,7 @@ local pendingReset
 -- grow direction (the origin end is always where the handle sits). Out of
 -- combat only — the placed frames are protected.
 local function PlaceAtOffset(frame, offset)
-	local grow = HO.db.options.bar and HO.db.options.bar.grow or "right"
+	local grow = EffectiveGrow()
 	frame:ClearAllPoints()
 	if grow == "right" then
 		frame:SetPoint("LEFT", bar, "LEFT", offset, 0)
@@ -63,22 +103,46 @@ end
 -- place a class button into the nth visible slot (slot 0 is the aura button).
 -- Buttons are class-fixed, so the visible set is compacted here per refresh.
 local function PlaceButtonInSlot(btn, slot)
-	PlaceAtOffset(btn, HANDLE_WIDTH + GAP + slot * (BUTTON_SIZE + GAP))
+	PlaceAtOffset(btn, HandleAlong() + GAP + slot * (BUTTON_SIZE + GAP))
 end
 
 -- arranges the frame, handle and aura slot for the configured growth direction;
 -- must only run out of combat (buttons are protected frames)
 local function LayoutBar()
-	local grow = HO.db.options.bar and HO.db.options.bar.grow or "right"
+	local skin = HO.Skin.current
+	local grow = EffectiveGrow()
 	local horizontal = (grow == "left" or grow == "right")
 	-- +1 slot for the always-present aura button that sits at the origin end
-	local length = HANDLE_WIDTH + GAP + (MAX_BUTTONS + 1) * (BUTTON_SIZE + GAP)
+	local length = HandleAlong() + GAP + (MAX_BUTTONS + 1) * (BUTTON_SIZE + GAP)
+	local cross = ButtonCross() + 4
 	if horizontal then
-		bar:SetSize(length, BUTTON_SIZE + 4)
-		handle:SetSize(HANDLE_WIDTH, HANDLE_ACROSS)
+		bar:SetSize(length, cross)
 	else
-		bar:SetSize(BUTTON_SIZE + 4, length)
+		bar:SetSize(cross, length)
+	end
+	-- handle geometry per skin: the gem rail (default), the little status ball
+	-- (legacy) or a slim status strip inside a larger invisible grab area (forga)
+	handle.tex:ClearAllPoints()
+	local handleStyle = HO.Skin.HandleStyle()
+	if handleStyle == "dot" then
+		handle:SetSize(LEGACY_HANDLE, LEGACY_HANDLE)
+		handle.tex:SetAllPoints(handle)
+	elseif handleStyle == "strip" then
+		local bc = ButtonCross()
+		if horizontal then
+			handle:SetSize(STRIP_HANDLE_HIT, bc - 4)
+			handle.tex:SetSize(5, bc - 10)
+		else
+			handle:SetSize(bc - 4, STRIP_HANDLE_HIT)
+			handle.tex:SetSize(bc - 10, 5)
+		end
+		handle.tex:SetPoint("CENTER")
+	elseif horizontal then
+		handle:SetSize(HANDLE_WIDTH, HANDLE_ACROSS)
+		handle.tex:SetAllPoints(handle)
+	else
 		handle:SetSize(HANDLE_ACROSS, HANDLE_WIDTH)
+		handle.tex:SetAllPoints(handle)
 	end
 	handle:ClearAllPoints()
 	if grow == "right" then
@@ -90,18 +154,18 @@ local function LayoutBar()
 	else -- up
 		handle:SetPoint("BOTTOM", bar, "BOTTOM", 0, 0)
 	end
-	-- the sprite is a horizontal rail; rotate it 90° when the bar (and thus the
-	-- handle) runs vertically so the rail lines up with the buttons. Aspect stays
-	-- ~2:1 either way, so the gem does not distort.
+	-- the gem sprite is a horizontal rail; rotate it 90° when the bar (and thus
+	-- the handle) runs vertically so the rail lines up with the buttons. The
+	-- other skins' handle textures are rotation-neutral.
 	if handle.tex and handle.tex.SetRotation then
-		handle.tex:SetRotation(horizontal and (math.pi / 2) or 0)
+		handle.tex:SetRotation((handleStyle == "gem" and horizontal) and (math.pi / 2) or 0)
 	end
 	-- the aura button takes the first slot (slot 0) right after the handle; the
 	-- class buttons follow, compacted into slots 1..n by the refresh
 	if auraButton then
-		PlaceAtOffset(auraButton, HANDLE_WIDTH + GAP)
+		PlaceAtOffset(auraButton, HandleAlong() + GAP)
 	end
-	lastGrow = grow
+	lastGrow = HO.db.options.bar and HO.db.options.bar.grow or "right"
 end
 
 local function BarOptions()
@@ -166,6 +230,9 @@ end
 
 -- colour the button's status border (nil = hide it): green all covered, red
 -- someone in range missing, amber only-expiring or only-out-of-range
+-- status border: the ring texture around the buttons. Colour ops only — safe
+-- in combat. The neutral (no-status) colour follows the skin: gold on the
+-- default look, plain grey on the alternatives.
 local function SetButtonBorder(btn, r, g, b)
 	if not btn.frame then
 		return
@@ -173,7 +240,7 @@ local function SetButtonBorder(btn, r, g, b)
 	if r then
 		btn.frame:SetVertexColor(r, g, b, 1)
 	else
-		btn.frame:SetVertexColor(0.5, 0.42, 0.22, 0.85) -- neutral gold frame, no status
+		btn.frame:SetVertexColor(HO.Colors.rgb("borderNeutral", 0.85)) -- no status
 	end
 end
 
@@ -213,6 +280,16 @@ local function BarStatus()
 	return worst
 end
 
+-- button backdrop tint; the wide legacy rows keep their class-coloured fill
+-- (set per duty in Bar.Refresh), so status shows on the border alone there
+local function TintButtonBg(btn, r, g, b, a)
+	if btn.bg and not HO.Skin.WideBar() then
+		-- SetVertexColor, NOT SetColorTexture: that would replace the WHITE8x8
+		-- texture and drop the rounded corner mask
+		btn.bg:SetVertexColor(r, g, b, a)
+	end
+end
+
 -- button visuals that are safe to update in combat
 local function UpdateButtonTexts(btn, task)
 	btn.count:SetText(task.missing > 0 and tostring(task.missing) or "")
@@ -222,26 +299,24 @@ local function UpdateButtonTexts(btn, task)
 	-- turns green right away so per-class progress is visible. The handle gem
 	-- stays red for the sweep as a whole until everything is fresh.
 	if HO.Engine.ForceActive() and (task.reachable or 0) > 0 then
-		btn.bg:SetVertexColor(0.55, 0.10, 0.10, 0.85)
+		TintButtonBg(btn, 0.55, 0.10, 0.10, 0.85)
 		SetButtonBorder(btn, 0.85, 0.15, 0.15)
 		return
 	end
 	-- in-range missing counts toward "red"; a purely out-of-range gap is amber,
 	-- since it is not something you can act on right now
 	local inRangeMissing = task.missing - (task.outOfRange or 0)
-	-- tint the backdrop with SetVertexColor (NOT SetColorTexture, which would
-	-- replace the WHITE8x8 texture and drop the rounded corner mask)
 	if task.noneAssigned then
-		btn.bg:SetVertexColor(0, 0, 0, 0.65)
+		TintButtonBg(btn, 0, 0, 0, 0.65)
 		SetButtonBorder(btn) -- no assignment: no status
 	elseif inRangeMissing > 0 then
-		btn.bg:SetVertexColor(0.55, 0.10, 0.10, 0.85)
+		TintButtonBg(btn, 0.55, 0.10, 0.10, 0.85)
 		SetButtonBorder(btn, 0.85, 0.15, 0.15) -- red
 	elseif task.expiring > 0 or (task.outOfRange or 0) > 0 then
-		btn.bg:SetVertexColor(0.55, 0.45, 0.05, 0.85)
+		TintButtonBg(btn, 0.55, 0.45, 0.05, 0.85)
 		SetButtonBorder(btn, 0.90, 0.70, 0.10) -- amber
 	else
-		btn.bg:SetVertexColor(0, 0, 0, 0.65)
+		TintButtonBg(btn, 0, 0, 0, 0.65)
 		SetButtonBorder(btn, 0.10, 0.80, 0.10) -- green: everyone covered
 	end
 end
@@ -266,7 +341,34 @@ local FLYOUT_WIDTH = 190
 local FLYOUT_ICON = FLYOUT_ROW_H - 6
 local FLYOUT_EXPIRING = 120 -- seconds left below which the row timer turns yellow
 local FLYOUT_MAX_ROWS = 15 -- pre-created secure rows per class (raid-size bound)
-local FLYOUT_AUTOHIDE = 1.5 -- seconds after the cursor leaves before auto-close
+-- close delay once the cursor has left button AND panel: short enough to feel
+-- responsive, long enough to cross the small gap between button and rows
+local FLYOUT_AUTOHIDE = 0.2
+
+-- fly-out geometry per skin: the legacy skin shows bare wide rows (same style
+-- as its bar rows, no titled panel box around them); the others use the titled
+-- panel with narrow rows
+local function FlyoutIsBare()
+	return HO.Skin.BareFlyout()
+end
+local function FlyoutRowW()
+	return FlyoutIsBare() and LEGACY_W or (FLYOUT_WIDTH - 2 * FLYOUT_PAD)
+end
+local function FlyoutRowH()
+	return FlyoutIsBare() and BUTTON_SIZE or FLYOUT_ROW_H
+end
+local function FlyoutRowStep()
+	return FlyoutRowH() + (FlyoutIsBare() and 1 or 0) -- 1 px breathing between bare rows
+end
+local function FlyoutHeaderH()
+	return FlyoutIsBare() and 0 or FLYOUT_HEADER
+end
+local function FlyoutFooterH()
+	return FlyoutIsBare() and 0 or FLYOUT_FOOTER
+end
+local function FlyoutPanelW()
+	return FlyoutIsBare() and LEGACY_W or FLYOUT_WIDTH
+end
 
 local function SetRowBorder(row, r, g, b)
 	if not row.iconFrame then
@@ -305,7 +407,7 @@ local function UpdateRowStatus(row, m)
 		if m.remaining < FLYOUT_EXPIRING then
 			row.timer:SetTextColor(HO.Colors.rgb("yellow"))
 		else
-			row.timer:SetTextColor(0.75, 0.75, 0.75)
+			row.timer:SetTextColor(HO.Colors.rgb("timerIdle"))
 		end
 	else
 		row.timer:SetText("")
@@ -427,41 +529,68 @@ local function AcquireFlyoutRow(panel, index)
 		return row
 	end
 	row = CreateFrame("Button", nil, panel, "SecureActionButtonTemplate")
-	row:SetSize(FLYOUT_WIDTH - 2 * FLYOUT_PAD, FLYOUT_ROW_H)
-	row:SetPoint("TOPLEFT", panel, "TOPLEFT", FLYOUT_PAD, -(FLYOUT_HEADER + (index - 1) * FLYOUT_ROW_H))
+	row:SetSize(FlyoutRowW(), FlyoutRowH())
+	row:SetPoint("TOPLEFT", panel, "TOPLEFT", FlyoutIsBare() and 0 or FLYOUT_PAD,
+		-(FlyoutHeaderH() + (index - 1) * FlyoutRowStep()))
 	row:RegisterForClicks("AnyDown", "AnyUp")
 	row:EnableMouseWheel(true)
 	row:Hide()
 	row.classToken = panel.classToken
 	row.bg = row:CreateTexture(nil, "BACKGROUND")
 	row.bg:SetAllPoints()
-	row.bg:SetColorTexture(1, 1, 1, 0.05)
-	row.icon = row:CreateTexture(nil, "ARTWORK")
-	row.icon:SetSize(FLYOUT_ICON, FLYOUT_ICON)
-	row.icon:SetPoint("LEFT", 3, 0)
-	row.icon:SetMask(BTN_MASK) -- rounded icon corners
-	-- rounded frame around the member icon; tinted per status in SetRowBorder
-	-- (green has / red missing / yellow requested / neutral gold otherwise)
-	row.iconFrame = row:CreateTexture(nil, "OVERLAY", nil, 1)
-	row.iconFrame:SetPoint("TOPLEFT", row.icon, "TOPLEFT", -1, 1)
-	row.iconFrame:SetPoint("BOTTOMRIGHT", row.icon, "BOTTOMRIGHT", 1, -1)
-	row.iconFrame:SetTexture(BTN_FRAME)
-	row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-	row.name:SetPoint("LEFT", row.icon, "RIGHT", 4, 0)
-	-- remaining-buff timer, sitting between the name and the request-badge slot
-	row.timer = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-	row.timer:SetPoint("RIGHT", row, "RIGHT", -(FLYOUT_ICON + 6), 0)
-	row.timer:SetJustifyH("RIGHT")
-	-- name fills the middle; the request badge keeps its slot on the far right
-	row.name:SetPoint("RIGHT", row.timer, "LEFT", -3, 0)
-	row.name:SetJustifyH("LEFT")
-	-- request badge: the requested blessing's icon on the row's right side, kept
-	-- distinct from the assigned-blessing icon on the left. Non-secure texture.
-	row.reqBadge = row:CreateTexture(nil, "OVERLAY")
-	row.reqBadge:SetSize(FLYOUT_ICON, FLYOUT_ICON)
-	row.reqBadge:SetPoint("RIGHT", -2, 0)
-	row.reqBadge:SetMask(BTN_MASK) -- rounded corners, matching the assigned icon
-	row.reqBadge:Hide()
+	if FlyoutIsBare() then
+		-- legacy: each row is a self-contained wide box like the bar rows — dark
+		-- fill, square status ring around the WHOLE row, icon left, timer
+		-- top-right, member name bottom-right
+		row.bg:SetColorTexture(0, 0, 0, 0.85)
+		row.iconFrame = row:CreateTexture(nil, "OVERLAY", nil, 1)
+		row.iconFrame:SetPoint("TOPLEFT", -1, 1)
+		row.iconFrame:SetPoint("BOTTOMRIGHT", 1, -1)
+		row.iconFrame:SetTexture(HO.Skin.IconFrame())
+		row.icon = row:CreateTexture(nil, "ARTWORK")
+		row.icon:SetSize(26, 26)
+		row.icon:SetPoint("LEFT", 4, 0)
+		row.timer = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		row.timer:SetPoint("TOPRIGHT", -6, -5)
+		row.timer:SetJustifyH("RIGHT")
+		row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		row.name:SetPoint("BOTTOMLEFT", row.icon, "BOTTOMRIGHT", 4, 1)
+		row.name:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -6, 4)
+		row.name:SetJustifyH("RIGHT")
+		row.name:SetWordWrap(false)
+		row.reqBadge = row:CreateTexture(nil, "OVERLAY")
+		row.reqBadge:SetSize(14, 14)
+		row.reqBadge:SetPoint("BOTTOMRIGHT", row.icon, "BOTTOMRIGHT", 5, -3)
+		row.reqBadge:Hide()
+	else
+		row.bg:SetColorTexture(1, 1, 1, 0.05)
+		row.icon = row:CreateTexture(nil, "ARTWORK")
+		row.icon:SetSize(FLYOUT_ICON, FLYOUT_ICON)
+		row.icon:SetPoint("LEFT", 3, 0)
+		HO.Skin.MaskIcon(row.icon)
+		-- frame ring around the member icon; tinted per status in SetRowBorder
+		-- (green has / red missing / neutral otherwise)
+		row.iconFrame = row:CreateTexture(nil, "OVERLAY", nil, 1)
+		row.iconFrame:SetPoint("TOPLEFT", row.icon, "TOPLEFT", -1, 1)
+		row.iconFrame:SetPoint("BOTTOMRIGHT", row.icon, "BOTTOMRIGHT", 1, -1)
+		row.iconFrame:SetTexture(HO.Skin.IconFrame())
+		row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		row.name:SetPoint("LEFT", row.icon, "RIGHT", 4, 0)
+		-- remaining-buff timer, sitting between the name and the request-badge slot
+		row.timer = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		row.timer:SetPoint("RIGHT", row, "RIGHT", -(FLYOUT_ICON + 6), 0)
+		row.timer:SetJustifyH("RIGHT")
+		-- name fills the middle; the request badge keeps its slot on the far right
+		row.name:SetPoint("RIGHT", row.timer, "LEFT", -3, 0)
+		row.name:SetJustifyH("LEFT")
+		-- request badge: the requested blessing's icon on the row's right side,
+		-- kept distinct from the assigned-blessing icon on the left
+		row.reqBadge = row:CreateTexture(nil, "OVERLAY")
+		row.reqBadge:SetSize(FLYOUT_ICON, FLYOUT_ICON)
+		row.reqBadge:SetPoint("RIGHT", -2, 0)
+		HO.Skin.MaskIcon(row.reqBadge)
+		row.reqBadge:Hide()
+	end
 	row:SetScript("OnMouseWheel", function(self, delta)
 		if not self.memberName then
 			return
@@ -505,23 +634,28 @@ end
 -- bar's scale and hides with it.
 local function CreatePanels()
 	for i, classToken in ipairs(CLASS_ORDER) do
-		local panel = CreateFrame("Frame", "HolyOrdersFlyout" .. i, bar, "SecureHandlerShowHideTemplate")
+		local panel = CreateFrame("Frame", "HolyOrdersFlyout" .. i, bar, "SecureHandlerShowHideTemplate, BackdropTemplate")
 		panel.classToken = classToken
-		panel:SetWidth(FLYOUT_WIDTH)
-		panel:SetHeight(FLYOUT_HEADER + FLYOUT_ROW_H + FLYOUT_FOOTER)
+		panel:SetWidth(FlyoutPanelW())
+		panel:SetHeight(FlyoutHeaderH() + FlyoutRowStep() + FlyoutFooterH())
 		panel:EnableMouse(true) -- swallow clicks; keeps the auto-hide hover alive
 		panel:SetClampedToScreen(true)
 		panel:SetFrameStrata("DIALOG") -- always reads over the bar
 		panel:SetToplevel(true)
-		-- same dark rounded panel + thin gold border as the assignment window,
-		-- with a gold seam under the title (shared HO.Skin builder)
-		HO.Skin.Panel(panel)
 		panel.title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 		panel.title:SetPoint("TOPLEFT", FLYOUT_PAD + 2, -5)
 		panel.title:SetPoint("TOPRIGHT", -(FLYOUT_PAD + 2), -5)
 		panel.title:SetJustifyH("LEFT")
 		panel.title:SetTextColor(HO.Colors.rgb("goldBright"))
-		panel.seam = HO.Skin.Seam(panel, -(FLYOUT_HEADER - 2))
+		if FlyoutIsBare() then
+			-- bare rows carry their own chrome; no panel box, no title line
+			panel.title:Hide()
+		else
+			-- same dark rounded panel + thin gold border as the assignment window,
+			-- with a gold seam under the title (shared HO.Skin builder)
+			HO.Skin.Panel(panel)
+			panel.seam = HO.Skin.Seam(panel, -(FLYOUT_HEADER - 2))
+		end
 		panel:SetAttribute("active", 0) -- gates the secure show (set out of combat)
 		panel:Hide()
 		flyoutPanels[i] = panel
@@ -570,7 +704,7 @@ local function FlyoutConfigure(classIndex, classToken, task, anchorBtn, anchorSh
 	for i = count + 1, #(panel.rows or {}) do
 		panel.rows[i]:Hide()
 	end
-	panel:SetHeight(FLYOUT_HEADER + count * FLYOUT_ROW_H + FLYOUT_FOOTER)
+	panel:SetHeight(FlyoutHeaderH() + count * FlyoutRowStep() + FlyoutFooterH())
 	-- fly-out direction is user-configurable (default: to the LEFT of the class
 	-- button, like the classic paladin buff addons); SetClampedToScreen keeps it
 	-- on-screen near an edge. Anchoring is out-of-combat only, so the option
@@ -633,7 +767,7 @@ local function CreateButton(classIndex)
 		bar, "SecureActionButtonTemplate, SecureHandlerEnterLeaveTemplate")
 	btn.classToken = CLASS_ORDER[classIndex]
 	btn.classIndex = classIndex
-	btn:SetSize(BUTTON_SIZE, BUTTON_SIZE)
+	btn:SetSize(ButtonCross(), BUTTON_SIZE)
 	-- ONE click edge only, mirroring the ActionButtonUseKeyDown cvar (set in
 	-- Bar.Refresh): registering both edges would run the OnClick wrap twice per
 	-- click and double-advance the combat cycle
@@ -713,43 +847,73 @@ local function CreateButton(classIndex)
 	end)
 	btn.hoBarButton = true -- marks our buttons for the tooltip re-render check
 
-	btn.bg = btn:CreateTexture(nil, "BACKGROUND")
-	btn.bg:SetAllPoints()
-	btn.bg:SetTexture("Interface\\Buttons\\WHITE8x8")
-	btn.bg:SetVertexColor(0, 0, 0, 0.65)
-	btn.bg:SetMask(BTN_MASK) -- rounded backdrop
+	if HO.Skin.WideBar() then
+		-- wide row: class-coloured dark fill (tinted per duty in Bar.Refresh) with
+		-- a square status ring, icon on the left, timer top-right, missing count
+		-- bottom-right. Plain textures only — no Backdrop mixin on secure frames.
+		btn.bg = btn:CreateTexture(nil, "BACKGROUND")
+		btn.bg:SetAllPoints()
+		btn.bg:SetTexture(WHITE8)
+		btn.bg:SetVertexColor(0, 0, 0, 0.8)
+		btn.frame = btn:CreateTexture(nil, "OVERLAY", nil, 1)
+		btn.frame:SetPoint("TOPLEFT", -1, 1)
+		btn.frame:SetPoint("BOTTOMRIGHT", 1, -1)
+		btn.frame:SetTexture(HO.Skin.IconFrame())
+		btn.icon = btn:CreateTexture(nil, "ARTWORK")
+		btn.icon:SetSize(26, 26)
+		btn.icon:SetPoint("LEFT", 4, 0)
+		btn.classIcon = btn:CreateTexture(nil, "OVERLAY")
+		btn.classIcon:SetDrawLayer("OVERLAY", 2)
+		btn.classIcon:SetSize(12, 12)
+		btn.classIcon:SetPoint("TOPLEFT", btn.icon, "TOPLEFT", -4, 4)
+		btn.classIcon:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
+		btn.timer = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+		btn.timer:SetPoint("TOPRIGHT", -7, -6)
+		btn.timer:SetJustifyH("RIGHT")
+		btn.count = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+		btn.count:SetPoint("BOTTOMRIGHT", -7, 5)
+		btn.count:SetJustifyH("RIGHT")
+	else
+		-- square button: rounded (default) or square (forga) icon chrome with a
+		-- tintable status ring, timer overlaid on the icon
+		btn.bg = btn:CreateTexture(nil, "BACKGROUND")
+		btn.bg:SetAllPoints()
+		btn.bg:SetTexture(WHITE8)
+		btn.bg:SetVertexColor(0, 0, 0, 0.65)
+		HO.Skin.MaskIcon(btn.bg)
 
-	btn.icon = btn:CreateTexture(nil, "ARTWORK")
-	btn.icon:SetPoint("TOPLEFT", 2, -2)
-	btn.icon:SetPoint("BOTTOMRIGHT", -2, 2)
-	btn.icon:SetMask(BTN_MASK) -- rounded icon corners
+		btn.icon = btn:CreateTexture(nil, "ARTWORK")
+		btn.icon:SetPoint("TOPLEFT", 2, -2)
+		btn.icon:SetPoint("BOTTOMRIGHT", -2, 2)
+		HO.Skin.MaskIcon(btn.icon)
 
-	btn.classIcon = btn:CreateTexture(nil, "OVERLAY")
-	-- draw above the status border (both are OVERLAY) so the corner class icon
-	-- is not clipped by the green/red/yellow edge
-	btn.classIcon:SetDrawLayer("OVERLAY", 2)
-	btn.classIcon:SetSize(15, 15)
-	btn.classIcon:SetPoint("TOPLEFT", -5, 5)
-	btn.classIcon:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
+		btn.classIcon = btn:CreateTexture(nil, "OVERLAY")
+		-- draw above the status border (both are OVERLAY) so the corner class icon
+		-- is not clipped by the green/red/yellow edge
+		btn.classIcon:SetDrawLayer("OVERLAY", 2)
+		btn.classIcon:SetSize(15, 15)
+		btn.classIcon:SetPoint("TOPLEFT", -5, 5)
+		btn.classIcon:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
 
-	-- rounded status frame (tintable): green = everyone covered, red = someone
-	-- missing, amber = expiring/out of range, yellow = a member requested a buff.
-	-- Recoloured in UpdateButtonTexts — a plain vertex recolour, safe in combat.
-	btn.frame = btn:CreateTexture(nil, "OVERLAY", nil, 1)
-	btn.frame:SetPoint("TOPLEFT", -1, 1)
-	btn.frame:SetPoint("BOTTOMRIGHT", 1, -1)
-	btn.frame:SetTexture(BTN_FRAME)
+		-- status frame ring (tintable): green = everyone covered, red = someone
+		-- missing, amber = expiring/out of range. Recoloured in UpdateButtonTexts
+		-- — a plain vertex recolour, safe in combat.
+		btn.frame = btn:CreateTexture(nil, "OVERLAY", nil, 1)
+		btn.frame:SetPoint("TOPLEFT", -1, 1)
+		btn.frame:SetPoint("BOTTOMRIGHT", 1, -1)
+		btn.frame:SetTexture(HO.Skin.IconFrame())
 
-	btn.count = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-	btn.count:SetPoint("BOTTOMRIGHT", -1, 1)
-	btn.count:SetDrawLayer("OVERLAY", 3) -- above the status frame ring
+		btn.count = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+		btn.count:SetPoint("BOTTOMRIGHT", -1, 1)
+		btn.count:SetDrawLayer("OVERLAY", 3) -- above the status frame ring
 
-	-- timer overlaid on the icon (centered), larger and outlined for readability
-	btn.timer = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-	btn.timer:SetPoint("CENTER", btn, "CENTER", 0, 0)
-	btn.timer:SetDrawLayer("OVERLAY", 4) -- above icon, frame and class badge
-	local tf, ts = btn.timer:GetFont()
-	btn.timer:SetFont(tf, (ts or 14) + 3, "THICKOUTLINE")
+		-- timer overlaid on the icon (centered), larger and outlined for readability
+		btn.timer = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+		btn.timer:SetPoint("CENTER", btn, "CENTER", 0, 0)
+		btn.timer:SetDrawLayer("OVERLAY", 4) -- above icon, frame and class badge
+		local tf, ts = btn.timer:GetFont()
+		btn.timer:SetFont(tf, (ts or 14) + 3, "THICKOUTLINE")
+	end
 
 	-- INSECURE hover extras ride along via HookScript (SetScript would overwrite
 	-- the EnterLeave template's secure handler and kill the snippet above)
@@ -833,7 +997,7 @@ end
 -- "my aura", separate from the class-duty buttons
 local function CreateAuraButton()
 	local btn = CreateFrame("Button", "HolyOrdersBarAura", bar, "SecureActionButtonTemplate")
-	btn:SetSize(BUTTON_SIZE, BUTTON_SIZE)
+	btn:SetSize(ButtonCross(), BUTTON_SIZE)
 	btn:RegisterForClicks("AnyDown", "AnyUp")
 	-- auras are self-cast; unit1 never changes, so it is safe to set once here.
 	-- spell1 (the aura name) is set from RefreshAuraButton, out of combat only.
@@ -848,28 +1012,48 @@ local function CreateAuraButton()
 	end)
 	btn.hoAuraButton = true -- marks the aura button for the tooltip re-render check
 
-	btn.bg = btn:CreateTexture(nil, "BACKGROUND")
-	btn.bg:SetAllPoints()
-	btn.bg:SetTexture("Interface\\Buttons\\WHITE8x8")
-	btn.bg:SetVertexColor(0.10, 0.10, 0.32, 0.85) -- blue tint distinguishes it from duty buttons
-	btn.bg:SetMask(BTN_MASK)
+	if HO.Skin.WideBar() then
+		-- wide row like the class rows: blue-tinted fill + blue ring, icon left,
+		-- label on the right. Plain textures — no Backdrop mixin on secure frames.
+		btn.bg = btn:CreateTexture(nil, "BACKGROUND")
+		btn.bg:SetAllPoints()
+		btn.bg:SetTexture(WHITE8)
+		btn.bg:SetVertexColor(0.08, 0.10, 0.28, 0.85)
+		btn.frame = btn:CreateTexture(nil, "OVERLAY", nil, 1)
+		btn.frame:SetPoint("TOPLEFT", -1, 1)
+		btn.frame:SetPoint("BOTTOMRIGHT", 1, -1)
+		btn.frame:SetTexture(HO.Skin.IconFrame())
+		btn.frame:SetVertexColor(0.35, 0.55, 1.0, 1)
+		btn.icon = btn:CreateTexture(nil, "ARTWORK")
+		btn.icon:SetSize(26, 26)
+		btn.icon:SetPoint("LEFT", 4, 0)
+		btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		btn.label:SetPoint("RIGHT", -7, 0)
+		btn.label:SetText(L["Aura"])
+	else
+		btn.bg = btn:CreateTexture(nil, "BACKGROUND")
+		btn.bg:SetAllPoints()
+		btn.bg:SetTexture(WHITE8)
+		btn.bg:SetVertexColor(0.10, 0.10, 0.32, 0.85) -- blue tint distinguishes it from duty buttons
+		HO.Skin.MaskIcon(btn.bg)
 
-	btn.icon = btn:CreateTexture(nil, "ARTWORK")
-	btn.icon:SetPoint("TOPLEFT", 2, -2)
-	btn.icon:SetPoint("BOTTOMRIGHT", -2, 2)
-	btn.icon:SetMask(BTN_MASK)
+		btn.icon = btn:CreateTexture(nil, "ARTWORK")
+		btn.icon:SetPoint("TOPLEFT", 2, -2)
+		btn.icon:SetPoint("BOTTOMRIGHT", -2, 2)
+		HO.Skin.MaskIcon(btn.icon)
 
-	-- blue rounded frame to match the aura's blue theme
-	btn.frame = btn:CreateTexture(nil, "OVERLAY", nil, 1)
-	btn.frame:SetPoint("TOPLEFT", -1, 1)
-	btn.frame:SetPoint("BOTTOMRIGHT", 1, -1)
-	btn.frame:SetTexture(BTN_FRAME)
-	btn.frame:SetVertexColor(0.35, 0.55, 1.0, 1)
+		-- blue frame ring to match the aura's blue theme
+		btn.frame = btn:CreateTexture(nil, "OVERLAY", nil, 1)
+		btn.frame:SetPoint("TOPLEFT", -1, 1)
+		btn.frame:SetPoint("BOTTOMRIGHT", 1, -1)
+		btn.frame:SetTexture(HO.Skin.IconFrame())
+		btn.frame:SetVertexColor(0.35, 0.55, 1.0, 1)
 
-	btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-	btn.label:SetPoint("BOTTOM", btn, "BOTTOM", 0, 1)
-	btn.label:SetText(L["Aura"])
-	btn.label:SetDrawLayer("OVERLAY", 3) -- above the frame ring
+		btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		btn.label:SetPoint("BOTTOM", btn, "BOTTOM", 0, 1)
+		btn.label:SetText(L["Aura"])
+		btn.label:SetDrawLayer("OVERLAY", 3) -- above the frame ring
+	end
 
 	btn:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -1079,20 +1263,32 @@ function Bar.Refresh()
 	end
 	HO.Engine.Update()
 	if handle then
-		local tex = HANDLE_TEX -- blue: no duties
+		-- overall status light: rest (no duties) / red (missing or force rebuff)
+		-- / yellow (attention) / green (all covered)
+		local state = "rest"
 		if HO.Engine.ForceActive() then
-			tex = HANDLE_TEX_ACTIVE -- red: rebuffing
+			state = "red"
 		else
 			local worst = BarStatus()
-			if worst == "red" then
-				tex = HANDLE_TEX_ACTIVE
-			elseif worst == "yellow" then
-				tex = HANDLE_TEX_YELLOW
-			elseif worst == "green" then
-				tex = HANDLE_TEX_GREEN
+			if worst then
+				state = worst
 			end
 		end
-		handle.tex:SetTexture(tex)
+		local handleStyle = HO.Skin.HandleStyle()
+		if handleStyle == "dot" then
+			handle.tex:SetTexture(HANDLE_DOTS[state]) -- little round status ball
+			handle.tex:SetVertexColor(1, 1, 1, 1)
+		elseif handleStyle == "strip" then
+			handle.tex:SetTexture(WHITE8) -- slim strip tinted by status
+			if state == "rest" then
+				handle.tex:SetVertexColor(HO.Colors.rgb("handleRest", 0.95))
+			else
+				handle.tex:SetVertexColor(HO.Colors.rgb(state, 0.95))
+			end
+		else
+			handle.tex:SetTexture(HANDLE_SPRITES[state]) -- gem sprite variants
+			handle.tex:SetVertexColor(1, 1, 1, 1)
+		end
 	end
 
 	if InCombatLockdown() then
@@ -1150,6 +1346,15 @@ function Bar.Refresh()
 		if task then
 			shown = shown + 1
 			PlaceButtonInSlot(btn, shown)
+			if HO.Skin.WideBar() then
+				-- class-coloured row fill, the classic look
+				local cc = RAID_CLASS_COLORS and RAID_CLASS_COLORS[classToken]
+				if cc then
+					btn.bg:SetVertexColor(cc.r * 0.32, cc.g * 0.32, cc.b * 0.32, 0.9)
+				else
+					btn.bg:SetVertexColor(0, 0, 0, 0.8)
+				end
+			end
 			local blessing = HO.Data.blessings[task.blessingID]
 			-- right-click: ALWAYS the greater blessing of this duty (one cast covers
 			-- the whole class) when it is known and a Symbol of Kings is on hand —

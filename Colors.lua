@@ -26,6 +26,14 @@ HO.Colors = {
 	green = { 0.435, 0.878, 0.275 }, -- 6FE046  active / covered
 	yellow = { 0.949, 0.788, 0.298 }, -- F2C94C  expiring / request
 	red = { 0.910, 0.353, 0.243 }, -- E85A3E  missing
+
+	-- skinnable chrome details (skins override these; see Skin.lua)
+	borderNeutral = { 0.5, 0.42, 0.22 }, -- status ring with no status to show
+	timerIdle = { 0.75, 0.75, 0.75 }, -- fly-out row timer when not expiring
+	btnNormal = { 0.11, 0.12, 0.15 }, -- flat-skin button fills
+	btnPushed = { 0.16, 0.18, 0.22 },
+	btnHover = { 0.22, 0.26, 0.32 },
+	handleRest = { 0.35, 0.40, 0.48 }, -- strip-handle colour with no duties
 }
 
 -- unpack a palette entry (+ optional alpha) for the SetVertexColor/SetTextColor

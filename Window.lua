@@ -34,10 +34,7 @@ local CLASS_ORDER = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN
 local MODE_TAG = { auto = "|cff40c0ffA|r", greater = "|cffffd100G|r", normal = "|cff40ff40S|r" }
 local EMPTY_SLOT = "Interface\\PaperDoll\\UI-Backpack-EmptySlot"
 local NONE_ICON = "Interface\\Buttons\\UI-GroupLoot-Pass-Up" -- explicit-none marker (matches the bar)
--- rounded-cell textures (mirrors the cast bar): a corner mask and a tintable
--- frame ring (bundled TGA, referenced without extension)
-local WIN_BTN_MASK = "Interface\\AddOns\\HolyOrders\\Icons\\ButtonMask"
-local WIN_BTN_FRAME = "Interface\\AddOns\\HolyOrders\\Icons\\ButtonFrame"
+-- cell icon chrome (mask + status ring) comes from HO.Skin, like the cast bar
 -- the dark rounded panel + gold border, seam, gem/close/button textures all come
 -- from the shared HO.Skin module (same look as the cast-bar fly-out)
 
@@ -315,13 +312,13 @@ local function CreateCell(parent)
 	cell.icon = cell:CreateTexture(nil, "ARTWORK")
 	cell.icon:SetPoint("CENTER")
 	cell.icon:SetSize(ICON_SIZE, ICON_SIZE)
-	cell.icon:SetMask(WIN_BTN_MASK) -- rounded icon corners
+	HO.Skin.MaskIcon(cell.icon)
 	-- static neutral rounded frame around the icon; the window is an editor, so
 	-- there is no green/red status colour on cells (mirrors the bar's neutral gold)
 	cell.frame = cell:CreateTexture(nil, "OVERLAY", nil, 1)
 	cell.frame:SetPoint("TOPLEFT", cell.icon, "TOPLEFT", -1, 1)
 	cell.frame:SetPoint("BOTTOMRIGHT", cell.icon, "BOTTOMRIGHT", 1, -1)
-	cell.frame:SetTexture(WIN_BTN_FRAME)
+	cell.frame:SetTexture(HO.Skin.IconFrame())
 	cell.frame:SetVertexColor(0.5, 0.42, 0.22, 0.7)
 	cell.mode = cell:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 	-- nudged out toward the bottom-right corner so the big letter clears the icon
@@ -477,12 +474,12 @@ local function AuraRowCell(row, colIndex)
 		cell.icon = cell:CreateTexture(nil, "ARTWORK")
 		cell.icon:SetPoint("CENTER")
 		cell.icon:SetSize(ICON_SIZE, ICON_SIZE)
-		cell.icon:SetMask(WIN_BTN_MASK) -- rounded icon corners
+		HO.Skin.MaskIcon(cell.icon)
 		-- static neutral rounded frame around the icon (editor: no status colour)
 		cell.frame = cell:CreateTexture(nil, "OVERLAY", nil, 1)
 		cell.frame:SetPoint("TOPLEFT", cell.icon, "TOPLEFT", -1, 1)
 		cell.frame:SetPoint("BOTTOMRIGHT", cell.icon, "BOTTOMRIGHT", 1, -1)
-		cell.frame:SetTexture(WIN_BTN_FRAME)
+		cell.frame:SetTexture(HO.Skin.IconFrame())
 		cell.frame:SetVertexColor(0.5, 0.42, 0.22, 0.7)
 		cell:SetScript("OnEnter", AuraCellTooltip)
 		cell:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -542,7 +539,7 @@ function Window.Create()
 	if win then
 		return
 	end
-	win = CreateFrame("Frame", "HolyOrdersWindow", UIParent)
+	win = CreateFrame("Frame", "HolyOrdersWindow", UIParent, "BackdropTemplate")
 	-- MEDIUM (standard panel strata) so higher-priority windows like the calendar
 	-- draw cleanly OVER us instead of interleaving/bleeding through at HIGH
 	win:SetFrameStrata("MEDIUM")
@@ -574,6 +571,9 @@ function Window.Create()
 	win.brand:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -8, 6)
 	win.brand:SetTexture(HO.Skin.tex.logo)
 	win.brand:SetAlpha(0.9)
+	if not HO.Skin.Decorated() then
+		win.brand:Hide() -- the crest belongs to decorated skins only
+	end
 
 	win.header = CreateFrame("Frame", nil, win)
 	win.header:SetPoint("TOPLEFT")
@@ -592,7 +592,13 @@ function Window.Create()
 	win.header.gem:SetPoint("LEFT", 8, 0)
 	win.header.gem:SetTexture(HO.Skin.tex.gem)
 	win.header.title = win.header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	win.header.title:SetPoint("LEFT", win.header.gem, "RIGHT", 6, 0)
+	if HO.Skin.Decorated() then
+		win.header.title:SetPoint("LEFT", win.header.gem, "RIGHT", 6, 0)
+	else
+		-- undecorated skins drop the gem for a plainer header
+		win.header.gem:Hide()
+		win.header.title:SetPoint("LEFT", 10, 0)
+	end
 	win.header.title:SetText(L["HolyOrders — Assignments"])
 	win.header.title:SetTextColor(HO.Colors.rgb("goldBright"))
 	win.seam = HO.Skin.Seam(win, -HEADER_H)

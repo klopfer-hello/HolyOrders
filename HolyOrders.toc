@@ -11,6 +11,9 @@ HolyOrders.lua
 Locale.lua
 Colors.lua
 Skin.lua
+Skins\Default.lua
+Skins\Legacy.lua
+Skins\Forga.lua
 Data.lua
 Talents.lua
 Roster.lua

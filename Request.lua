@@ -111,7 +111,7 @@ local function Create()
 	if frame then
 		return
 	end
-	frame = CreateFrame("Frame", "HolyOrdersRequest", UIParent)
+	frame = CreateFrame("Frame", "HolyOrdersRequest", UIParent, "BackdropTemplate")
 	-- MEDIUM (standard panel strata) so higher-priority windows draw cleanly over
 	-- us instead of bleeding through at HIGH
 	frame:SetFrameStrata("MEDIUM")

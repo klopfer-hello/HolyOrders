@@ -1,8 +1,22 @@
--- HolyOrders — shared UI skin
--- The assignment window and the cast-bar fly-out share one look: a dark rounded
--- panel with a thin gold border, a gold seam under the title, and themed buttons.
--- Keeping the builders here (not copied per widget) means one tweak restyles every
--- panel at once. Colours come from HO.Colors.
+-- HolyOrders — skin registry and dispatcher
+-- Every skin is an ADAPTER living in Skins/<Name>.lua and registered via
+--     HO.Skin.Register("name", def)
+-- Third-party addons can ship their own skin the same way: depend on
+-- HolyOrders, call HO.Skin.Register from your addon file, and the skin shows
+-- up in the options dropdown (registration is re-resolved at PLAYER_LOGIN, so
+-- dependent addons register in time). A def supports:
+--   palette      table of HO.Colors overrides, or a function returning one
+--                (resolved at load; see Colors.lua for the available keys)
+--   Panel        function(frame, corner) — paint window/fly-out panel chrome
+--   Button       function(btn) — restyle a UIPanelButtonTemplate (nil = stock)
+--   CloseButton  function(btn) — restyle a UIPanelCloseButton (nil = stock)
+--   available    function() -> ok, reason — gate (e.g. requires another addon)
+--   roundIcons   true: icons keep the rounded mask + round status ring
+--   decorated    true: show the title gem and the corner crest
+--   handle       "gem" | "dot" | "strip" — cast-bar handle style
+--   wideBar      true: the cast bar uses wide class-coloured rows
+--   bareFlyout   true: fly-out shows bare wide rows instead of a titled panel
+-- Skins apply at UI load; switching prompts for a reload.
 
 local HO = HolyOrders
 local Skin = {}
@@ -18,58 +32,132 @@ Skin.tex = {
 	closeHi = PATH .. "WindowCloseHi",
 	gem = PATH .. "TitleGem",
 	logo = PATH .. "Logo",
+	mask = PATH .. "ButtonMask",
+	frameRound = PATH .. "ButtonFrame",
+	frameSquare = PATH .. "ButtonFrameSquare",
 }
-
--- 9-slice geometry: the source corner (~24 px in the 1240x364 border texture)
--- drawn at CORNER px on screen
+Skin.WHITE = "Interface\\Buttons\\WHITE8x8"
+-- 9-slice geometry of the default panel art (used by Skins/Default.lua)
 Skin.CORNER = 16
-local TCX = 24 / 1240 -- source corner width as a texcoord fraction
-local TCY = 24 / 364 -- source corner height as a texcoord fraction
 
--- paint the dark rounded panel + thin gold border onto `frame` as BACKGROUND
--- textures. Decorative only: fixed corners never distort, edges stretch on a
--- single axis, the flat interior stretches invisibly, and every piece anchors to
--- the frame's own corners — so the skin tracks whatever size the frame is given
--- and never drives that size.
-function Skin.Panel(frame, corner)
-	local C, tx, ty = corner or Skin.CORNER, TCX, TCY
-	local function tex(l, r, t, b)
-		local tg = frame:CreateTexture(nil, "BACKGROUND")
-		tg:SetTexture(Skin.tex.bg)
-		tg:SetTexCoord(l, r, t, b)
-		return tg
+-- registry ---------------------------------------------------------------------
+
+local defs = {}
+Skin.SKINS = {} -- registration order; drives the options dropdown
+
+function Skin.Register(name, def)
+	if type(name) ~= "string" or type(def) ~= "table" or defs[name] then
+		return
 	end
-	local tl = tex(0, tx, 0, ty)
-	tl:SetSize(C, C)
-	tl:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-	local tr = tex(1 - tx, 1, 0, ty)
-	tr:SetSize(C, C)
-	tr:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-	local bl = tex(0, tx, 1 - ty, 1)
-	bl:SetSize(C, C)
-	bl:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
-	local br = tex(1 - tx, 1, 1 - ty, 1)
-	br:SetSize(C, C)
-	br:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-	local top = tex(tx, 1 - tx, 0, ty)
-	top:SetPoint("TOPLEFT", tl, "TOPRIGHT")
-	top:SetPoint("BOTTOMRIGHT", tr, "BOTTOMLEFT")
-	local bottom = tex(tx, 1 - tx, 1 - ty, 1)
-	bottom:SetPoint("TOPLEFT", bl, "TOPRIGHT")
-	bottom:SetPoint("BOTTOMRIGHT", br, "BOTTOMLEFT")
-	local left = tex(0, tx, ty, 1 - ty)
-	left:SetPoint("TOPLEFT", tl, "BOTTOMLEFT")
-	left:SetPoint("BOTTOMRIGHT", bl, "TOPRIGHT")
-	local right = tex(1 - tx, 1, ty, 1 - ty)
-	right:SetPoint("TOPLEFT", tr, "BOTTOMLEFT")
-	right:SetPoint("BOTTOMRIGHT", br, "TOPRIGHT")
-	local center = tex(tx, 1 - tx, ty, 1 - ty)
-	center:SetPoint("TOPLEFT", tl, "BOTTOMRIGHT")
-	center:SetPoint("BOTTOMRIGHT", br, "TOPLEFT")
+	def.name = name
+	defs[name] = def
+	Skin.SKINS[#Skin.SKINS + 1] = name
 end
 
--- a thin gold seam line across `frame` at vertical offset y (negative = below the
--- top edge), inset to clear the rounded corners
+Skin.current = "default"
+Skin.active = nil
+
+-- resolve the active skin from the saved option and merge its palette into
+-- HO.Colors. Runs before any skinned frame is created.
+function Skin.Init()
+	local s = HO.db and HO.db.options and HO.db.options.skin
+	local def = s and defs[s]
+	if def and def.available then
+		local ok, reason = def.available()
+		if not ok then
+			HO.Log("skin", "skin '" .. tostring(s) .. "' unavailable (" .. tostring(reason) .. ") — using default")
+			def = nil
+		end
+	end
+	if not def then
+		def = defs["default"]
+		s = "default"
+	end
+	Skin.current = s
+	Skin.active = def
+	local palette = def and def.palette
+	if type(palette) == "function" then
+		palette = palette()
+	end
+	if palette then
+		for key, colour in pairs(palette) do
+			HO.Colors[key] = colour
+		end
+	end
+	HO.Log("skin", "active skin: " .. tostring(s)
+		.. " (option: " .. tostring(HO.db and HO.db.options and HO.db.options.skin) .. ")")
+end
+
+local booted = false
+HO.RegisterEvent("ADDON_LOADED", function()
+	if HO.db and not booted then
+		booted = true
+		Skin.Init()
+	end
+end)
+-- re-resolve at PLAYER_LOGIN (still before frame creation): skins registered by
+-- DEPENDENT addons load after us and must be picked up too
+HO.RegisterEvent("PLAYER_LOGIN", Skin.Init)
+
+-- dispatchers -------------------------------------------------------------------
+
+function Skin.Panel(frame, corner)
+	local def = Skin.active
+	if def and def.Panel then
+		def.Panel(frame, corner)
+	end
+end
+
+function Skin.Button(btn)
+	local def = Skin.active
+	if def and def.Button then
+		def.Button(btn)
+	end
+end
+
+function Skin.CloseButton(btn)
+	local def = Skin.active
+	if def and def.CloseButton then
+		def.CloseButton(btn)
+	end
+end
+
+-- flag helpers (safe defaults when no skin resolved yet) ------------------------
+
+function Skin.MaskIcon(texture)
+	if Skin.active and Skin.active.roundIcons then
+		texture:SetMask(Skin.tex.mask)
+	end
+end
+
+-- the tintable status ring drawn around icons/rows: round or square
+function Skin.IconFrame()
+	return (Skin.active and Skin.active.roundIcons) and Skin.tex.frameRound or Skin.tex.frameSquare
+end
+
+function Skin.HandleStyle()
+	return (Skin.active and Skin.active.handle) or "gem"
+end
+
+function Skin.WideBar()
+	return (Skin.active and Skin.active.wideBar) or false
+end
+
+function Skin.BareFlyout()
+	return (Skin.active and Skin.active.bareFlyout) or false
+end
+
+function Skin.Decorated()
+	if not Skin.active then
+		return true
+	end
+	return Skin.active.decorated or false
+end
+
+-- shared building blocks for skin files -----------------------------------------
+
+-- a thin palette-coloured seam line across `frame` at vertical offset y
+-- (negative = below the top edge), inset to clear the panel corners
 function Skin.Seam(frame, y)
 	local seam = frame:CreateTexture(nil, "ARTWORK")
 	seam:SetHeight(1)
@@ -79,41 +167,41 @@ function Skin.Seam(frame, y)
 	return seam
 end
 
--- template buttons carry their own SetTexCoord; reset it so our full-frame texture
--- fills the button instead of showing a sliced region
-local function StripCoords(t)
+-- template buttons carry their own SetTexCoord; reset it so a full-frame
+-- texture fills the button instead of showing a sliced region
+function Skin.StripCoords(t)
 	if t then
 		t:SetTexCoord(0, 1, 0, 1)
 	end
 end
-Skin.StripCoords = StripCoords
 
--- reskin a UIPanelButtonTemplate button: dark rounded frame + gold label
-function Skin.Button(btn)
-	btn:SetNormalTexture(Skin.tex.button)
-	btn:SetPushedTexture(Skin.tex.buttonPush)
-	btn:SetHighlightTexture(Skin.tex.buttonHi)
-	StripCoords(btn:GetNormalTexture())
-	StripCoords(btn:GetPushedTexture())
-	StripCoords(btn:GetHighlightTexture())
-	if btn:GetHighlightTexture() then
-		btn:GetHighlightTexture():SetBlendMode("BLEND") -- our highlight is a full frame, not an additive glow
+-- flat panel: palette fill + 1 px palette border (the shared look of the flat
+-- skin family; requires the frame to carry BackdropTemplate)
+function Skin.FlatPanel(frame)
+	if not frame.SetBackdrop then
+		return
 	end
+	frame:SetBackdrop({
+		bgFile = Skin.WHITE,
+		edgeFile = Skin.WHITE,
+		edgeSize = 1,
+	})
+	frame:SetBackdropColor(HO.Colors.rgb("panelBg", 0.96))
+	frame:SetBackdropBorderColor(HO.Colors.rgb("goldDeep", 1))
+end
+
+-- flat button: palette fills with a light label
+function Skin.FlatButton(btn)
+	btn:SetNormalTexture(Skin.WHITE)
+	btn:SetPushedTexture(Skin.WHITE)
+	btn:SetHighlightTexture(Skin.WHITE)
+	btn:GetNormalTexture():SetVertexColor(HO.Colors.rgb("btnNormal", 0.95))
+	btn:GetPushedTexture():SetVertexColor(HO.Colors.rgb("btnPushed", 0.95))
+	local hl = btn:GetHighlightTexture()
+	hl:SetVertexColor(HO.Colors.rgb("btnHover", 0.6))
+	hl:SetBlendMode("BLEND")
 	local fs = btn:GetFontString()
 	if fs then
 		fs:SetTextColor(HO.Colors.rgb("goldBright"))
-	end
-end
-
--- reskin a UIPanelCloseButton: gold X
-function Skin.CloseButton(btn)
-	btn:SetNormalTexture(Skin.tex.close)
-	btn:SetPushedTexture(Skin.tex.close)
-	btn:SetHighlightTexture(Skin.tex.closeHi)
-	StripCoords(btn:GetNormalTexture())
-	StripCoords(btn:GetPushedTexture())
-	StripCoords(btn:GetHighlightTexture())
-	if btn:GetHighlightTexture() then
-		btn:GetHighlightTexture():SetBlendMode("BLEND")
 	end
 end

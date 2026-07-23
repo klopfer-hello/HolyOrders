@@ -8,6 +8,26 @@ local L = HO.L
 local PET_CYCLE = { 2, 1, 3 } -- Might > Wisdom > Kings
 local GROW_CYCLE = { "right", "left", "down", "up" }
 local FLYOUT_CYCLE = { "left", "right", "up", "down" }
+
+-- switching the skin rebuilds every frame's chrome, which only happens at UI
+-- load — so offer the reload right away (or let the user do it later)
+StaticPopupDialogs["HOLYORDERS_SKIN_RELOAD"] = {
+	text = "HolyOrders: %s",
+	button1 = _G.RELOADUI or "Reload UI",
+	button2 = _G.CANCEL or "Cancel",
+	OnAccept = function()
+		ReloadUI()
+	end,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+	preferredIndex = 3, -- avoid tainting the default popup slots
+}
+
+function Options.PromptSkinReload()
+	local HOL = HO.L
+	StaticPopup_Show("HOLYORDERS_SKIN_RELOAD", HOL["the new skin applies after a UI reload — reload now?"])
+end
 local REFRESH_INTERVAL = 1.0
 local LABEL_WIDTH = 480 -- wrap long (German) labels instead of running off the panel
 
@@ -28,18 +48,6 @@ function Options.Ensure()
 	return o
 end
 
--- advance a scale value to the next preset in SCALE_CYCLE (wraps)
-local function NextScale(current)
-	local nextScale = SCALE_CYCLE[1]
-	for i, s in ipairs(SCALE_CYCLE) do
-		if s == (current or 1.0) then
-			nextScale = SCALE_CYCLE[i + 1] or SCALE_CYCLE[1]
-			break
-		end
-	end
-	return nextScale
-end
-
 local function Refresh()
 	if not panel or not panel:IsShown() then
 		return
@@ -49,11 +57,12 @@ local function Refresh()
 		checks[i]:SetChecked(item.get(o) and true or false)
 	end
 	local blessing = HO.Data.blessings[o.pets.blessing or 2]
-	panel.petBtn:SetText(string.format(L["Pet blessing: %s"], blessing and (blessing.name or blessing.key) or "?"))
-	panel.growBtn:SetText(string.format(L["Bar grows: %s"], o.bar.grow or "right"))
-	panel.flyoutBtn:SetText(string.format(L["Fly-out opens: %s"], o.bar.flyout or "left"))
-	panel.barScaleBtn:SetText(string.format(L["Cast bar scale: %d%%"], math.floor((o.bar.scale or 1) * 100 + 0.5)))
-	panel.winScaleBtn:SetText(string.format(L["Window scale: %d%%"], math.floor(((o.window and o.window.scale) or 1) * 100 + 0.5)))
+	panel.petBtn.value:SetText(blessing and (blessing.name or blessing.key) or "?")
+	panel.growBtn.value:SetText(o.bar.grow or "right")
+	panel.flyoutBtn.value:SetText(o.bar.flyout or "left")
+	panel.skinBtn.value:SetText(o.skin or "default")
+	panel.barScaleBtn.value:SetText(string.format("%d%%", math.floor((o.bar.scale or 1) * 100 + 0.5)))
+	panel.winScaleBtn.value:SetText(string.format("%d%%", math.floor(((o.window and o.window.scale) or 1) * 100 + 0.5)))
 end
 
 -- toggles that change plan/pet display must also update an open assignment
@@ -130,89 +139,204 @@ function Options.Create()
 
 	local buttonsTop = topOffset + #ITEMS * 26 + 8
 
-	panel.growBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-	panel.growBtn:SetSize(240, 22)
-	panel.growBtn:SetPoint("TOPLEFT", 16, -buttonsTop)
-	panel.growBtn:SetScript("OnClick", function()
-		local o = Options.Ensure()
-		local nextDir = GROW_CYCLE[1]
-		for i, dir in ipairs(GROW_CYCLE) do
-			if dir == (o.bar.grow or "right") then
-				nextDir = GROW_CYCLE[i + 1] or GROW_CYCLE[1]
-				break
-			end
+	-- drop-down selects -----------------------------------------------------
+	-- own lightweight widget instead of the Blizzard dropdown: the shared
+	-- dropdown implementation is a classic taint vector (risky next to our
+	-- secure cast frames), and this one is a plain button + choice list
+	local openList -- the currently open choice list, if any
+	local function CloseOpenList()
+		if openList then
+			openList:Hide()
+			openList = nil
 		end
-		o.bar.grow = nextDir
-		Refresh()
+	end
+	panel:HookScript("OnHide", CloseOpenList)
+
+	local SELECT_ROW_H = 20
+	local WHITE = "Interface\\Buttons\\WHITE8x8"
+	-- a dropdown select in the familiar options style: a small label above a
+	-- dark value box with an arrow; clicking the box opens the choice list
+	-- below it. choicesFn returns {value, text, current} rows; the current
+	-- value text in the box is maintained by Refresh via btn.value.
+	local function CreateSelect(yOffset, labelKey, choicesFn, onSelect)
+		local label = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+		label:SetPoint("TOPLEFT", 16, -yOffset)
+		label:SetText(L[labelKey])
+		local btn = CreateFrame("Button", nil, panel, "BackdropTemplate")
+		btn:SetSize(240, 24)
+		btn:SetPoint("TOPLEFT", 16, -(yOffset + 14))
+		if btn.SetBackdrop then
+			btn:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
+			btn:SetBackdropColor(0.08, 0.08, 0.10, 0.95)
+			btn:SetBackdropBorderColor(0.35, 0.35, 0.40, 1)
+		end
+		btn.value = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+		btn.value:SetPoint("LEFT", 8, 0)
+		btn.arrow = btn:CreateTexture(nil, "ARTWORK")
+		btn.arrow:SetSize(18, 18)
+		btn.arrow:SetPoint("RIGHT", -3, 0)
+		btn.arrow:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
+		btn.hl = btn:CreateTexture(nil, "HIGHLIGHT")
+		btn.hl:SetAllPoints()
+		btn.hl:SetColorTexture(1, 1, 1, 0.05)
+		local list = CreateFrame("Frame", nil, panel, "BackdropTemplate")
+		list:SetPoint("TOPLEFT", btn, "BOTTOMLEFT", 0, -1)
+		list:SetWidth(240)
+		list:SetFrameStrata("DIALOG")
+		list:Hide()
+		list.bg = list:CreateTexture(nil, "BACKGROUND")
+		list.bg:SetAllPoints()
+		list.bg:SetColorTexture(0.06, 0.06, 0.08, 0.97)
+		if list.SetBackdrop then
+			list:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+			list:SetBackdropBorderColor(HO.Colors.rgb("goldDeep", 1))
+		end
+		list.rows = {}
+		btn:SetScript("OnClick", function()
+			if list:IsShown() then
+				CloseOpenList()
+				return
+			end
+			CloseOpenList()
+			local choices = choicesFn()
+			for i, choice in ipairs(choices) do
+				local row = list.rows[i]
+				if not row then
+					row = CreateFrame("Button", nil, list)
+					row:SetSize(238, SELECT_ROW_H)
+					row:SetPoint("TOPLEFT", 1, -(1 + (i - 1) * SELECT_ROW_H))
+					row.hl = row:CreateTexture(nil, "HIGHLIGHT")
+					row.hl:SetAllPoints()
+					row.hl:SetColorTexture(1, 1, 1, 0.08)
+					row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+					row.text:SetPoint("LEFT", 8, 0)
+					row:SetScript("OnClick", function(self)
+						CloseOpenList()
+						onSelect(self.value)
+						Refresh()
+					end)
+					list.rows[i] = row
+				end
+				row.value = choice.value
+				row.text:SetText(choice.text)
+				if choice.current then
+					row.text:SetTextColor(HO.Colors.rgb("goldBright"))
+				else
+					row.text:SetTextColor(0.9, 0.9, 0.9)
+				end
+				row:Show()
+			end
+			for i = #choices + 1, #list.rows do
+				list.rows[i]:Hide()
+			end
+			list:SetHeight(2 + #choices * SELECT_ROW_H)
+			list:Show()
+			openList = list
+		end)
+		return btn
+	end
+
+	-- growth direction of the cast bar
+	panel.growBtn = CreateSelect(buttonsTop, "Bar grows", function()
+		local o = Options.Ensure()
+		local choices = {}
+		for _, dir in ipairs(GROW_CYCLE) do
+			choices[#choices + 1] = { value = dir, text = dir, current = (o.bar.grow or "right") == dir }
+		end
+		return choices
+	end, function(value)
+		Options.Ensure().bar.grow = value
 		HO.Bar.Refresh()
 	end)
 
-	panel.petBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-	panel.petBtn:SetSize(240, 22)
-	panel.petBtn:SetPoint("TOPLEFT", 16, -(buttonsTop + 28))
-	panel.petBtn:SetScript("OnClick", function()
+	-- pet blessing choice (localized blessing names)
+	panel.petBtn = CreateSelect(buttonsTop + 40, "Pet blessing", function()
 		local o = Options.Ensure()
-		local nextID = PET_CYCLE[1]
-		for i, id in ipairs(PET_CYCLE) do
-			if id == o.pets.blessing then
-				nextID = PET_CYCLE[i + 1] or PET_CYCLE[1]
-				break
-			end
+		local choices = {}
+		for _, id in ipairs(PET_CYCLE) do
+			local blessing = HO.Data.blessings[id]
+			choices[#choices + 1] = {
+				value = id,
+				text = blessing and (blessing.name or blessing.key) or tostring(id),
+				current = (o.pets.blessing or 2) == id,
+			}
 		end
-		o.pets.blessing = nextID
-		Refresh()
+		return choices
+	end, function(value)
+		Options.Ensure().pets.blessing = value
 		RefreshAll()
 	end)
 
-	-- fly-out direction: which side of a class button the member panel opens on
-	panel.flyoutBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-	panel.flyoutBtn:SetSize(240, 22)
-	panel.flyoutBtn:SetPoint("TOPLEFT", 16, -(buttonsTop + 112))
-	panel.flyoutBtn:SetScript("OnClick", function()
+	-- cast bar scale: the bar is a protected frame, so ApplyScale is
+	-- combat-guarded and self-applies on PLAYER_REGEN_ENABLED
+	panel.barScaleBtn = CreateSelect(buttonsTop + 80, "Cast bar scale", function()
 		local o = Options.Ensure()
-		local nextDir = FLYOUT_CYCLE[1]
-		for i, dir in ipairs(FLYOUT_CYCLE) do
-			if dir == (o.bar.flyout or "left") then
-				nextDir = FLYOUT_CYCLE[i + 1] or FLYOUT_CYCLE[1]
-				break
-			end
+		local choices = {}
+		for _, s in ipairs(SCALE_CYCLE) do
+			choices[#choices + 1] = {
+				value = s,
+				text = string.format("%d%%", math.floor(s * 100 + 0.5)),
+				current = (o.bar.scale or 1.0) == s,
+			}
 		end
-		o.bar.flyout = nextDir
-		Refresh()
-		if HO.Bar and HO.Bar.Refresh then
-			HO.Bar.Refresh() -- re-anchors the panels out of combat
-		end
-	end)
-
-	-- cast bar scale: cycles a preset list; the bar is a protected frame, so
-	-- ApplyScale is combat-guarded and self-applies on PLAYER_REGEN_ENABLED
-	panel.barScaleBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-	panel.barScaleBtn:SetSize(240, 22)
-	panel.barScaleBtn:SetPoint("TOPLEFT", 16, -(buttonsTop + 56))
-	panel.barScaleBtn:SetScript("OnClick", function()
-		local o = Options.Ensure()
-		o.bar.scale = NextScale(o.bar.scale)
+		return choices
+	end, function(value)
+		Options.Ensure().bar.scale = value
 		if HO.Bar and HO.Bar.ApplyScale then
 			HO.Bar.ApplyScale()
 		end
-		Refresh()
 	end)
 
 	-- window scale: applies to the assignment window and the buff-request window
-	panel.winScaleBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-	panel.winScaleBtn:SetSize(240, 22)
-	panel.winScaleBtn:SetPoint("TOPLEFT", 16, -(buttonsTop + 84))
-	panel.winScaleBtn:SetScript("OnClick", function()
+	panel.winScaleBtn = CreateSelect(buttonsTop + 120, "Window scale", function()
+		local o = Options.Ensure()
+		local choices = {}
+		for _, s in ipairs(SCALE_CYCLE) do
+			choices[#choices + 1] = {
+				value = s,
+				text = string.format("%d%%", math.floor(s * 100 + 0.5)),
+				current = ((o.window and o.window.scale) or 1.0) == s,
+			}
+		end
+		return choices
+	end, function(value)
 		local o = Options.Ensure()
 		o.window = o.window or {}
-		o.window.scale = NextScale(o.window.scale)
+		o.window.scale = value
 		if HO.Window and HO.Window.ApplyScale then
 			HO.Window.ApplyScale()
 		end
 		if HO.Request and HO.Request.ApplyScale then
 			HO.Request.ApplyScale()
 		end
-		Refresh()
+	end)
+
+	-- fly-out direction: which side of a class button the member panel opens on
+	panel.flyoutBtn = CreateSelect(buttonsTop + 160, "Fly-out opens", function()
+		local o = Options.Ensure()
+		local choices = {}
+		for _, dir in ipairs(FLYOUT_CYCLE) do
+			choices[#choices + 1] = { value = dir, text = dir, current = (o.bar.flyout or "left") == dir }
+		end
+		return choices
+	end, function(value)
+		Options.Ensure().bar.flyout = value
+		if HO.Bar and HO.Bar.Refresh then
+			HO.Bar.Refresh() -- re-anchors the panels out of combat
+		end
+	end)
+
+	-- UI skin: chrome is built at load, so a change prompts for a reload
+	panel.skinBtn = CreateSelect(buttonsTop + 200, "Skin", function()
+		local o = Options.Ensure()
+		local choices = {}
+		for _, s in ipairs(HO.Skin.SKINS) do
+			choices[#choices + 1] = { value = s, text = s, current = (o.skin or "default") == s }
+		end
+		return choices
+	end, function(value)
+		Options.Ensure().skin = value
+		Options.PromptSkinReload()
 	end)
 
 	-- register with whichever options system this client provides

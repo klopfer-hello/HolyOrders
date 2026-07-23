@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-07-22
+
+Sync protocol stays v4 — compatible with 0.17.x–0.24.x.
+
+### Added
+- **Selectable UI skins** — Options dropdown or `/ho skin <name>`; switching
+  prompts for a UI reload:
+  - `default` — the gold look, unchanged.
+  - `legacy` — the classic style: tooltip-backdrop panels, a vertically
+    stacked bar of wide class-coloured rows (icon left, timer right), a small
+    round status ball as handle, and a bare wide-row fly-out.
+  - `forga` — flat modern dark-slate with thin borders and a slim status
+    strip as handle.
+- Skins are **pluggable**: each lives in its own file under `Skins/`, and
+  other addons can register additional skins via `HO.Skin.Register` — they
+  appear in the options automatically.
+
+### Changed
+- The options panel's multi-choice settings are now proper **dropdown
+  selects** (current value shown in a box, choices open below) instead of
+  cycle-through buttons.
+- The fly-out closes much faster once the cursor leaves (0.2s instead of
+  1.5s).
+
 ## [0.24.0] - 2026-07-22
 
 Sync protocol stays v4 — compatible with 0.17.x–0.23.x.

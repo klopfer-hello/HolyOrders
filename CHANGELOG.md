@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-07-24
+
+Sync protocol stays v4 — compatible with 0.17.x–0.26.x. The reload-recovery
+fixes take full effect once every paladin runs this version.
+
+### Added
+- New **"biker" skin**: adventure-rally tricolor livery — blue-black panels,
+  rally-red titles, blue seams — with a spoked wheel as the bar handle. The
+  gold rim tints with the overall status and the wheel spins while a force
+  rebuff is running.
+- **Pets can now receive several blessings**: every paladin covering the pet
+  owner's class takes one slot of a ranked list (the configured pet blessing,
+  then Kings, then Might — and Wisdom on pets that actually run on mana)
+  instead of everyone duplicating the same single buff.
+- `/ho peers` lists clients running an incompatible sync protocol instead of
+  showing them as absent, and says who needs the update.
+
+### Changed
+- Blessings with **under 5 minutes** left count as expiring (previously 2):
+  the bar-button rebuff cycle picks members up earlier, and the yellow
+  status warns sooner.
+- **No-Salvation swaps** no longer default to Light: the class preference
+  chain and Kings are tried first, Light is strictly the last resort.
+
+### Fixed
+- The peer list rebuilds after a mid-group `/reload`: the client now pulls
+  state on its first grouped roster, and pull replies lead with a hello —
+  previously the once-per-session greeting left a reloader invisible until
+  some paladin greeted again for an unrelated reason.
+- Messages from group members the local roster had not caught up with yet
+  were silently dropped during raid formation, leaving stale assignment rows
+  behind; they are now stashed and replayed once the roster catches up.
+- Buff requests reach freshly reloaded clients again (pull replies include
+  them; requests are deliberately never saved to disk).
+- Two leads broadcasting a plan snapshot at the same time no longer discard
+  each other's half-received snapshot.
+- Single edits still queued when a plan snapshot is sent are cancelled
+  instead of firing afterwards with stale revisions.
+- Addon messages from same-realm senders delivered without a realm suffix
+  are qualified correctly (defensive; also fixes the own-echo filter for
+  clients that deliver bare names).
+
 ## [0.26.0] - 2026-07-23
 
 Sync protocol stays v4 — compatible with 0.17.x–0.25.x.

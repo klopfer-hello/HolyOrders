@@ -33,7 +33,9 @@ Comm.specSync = {} -- [fullName] = spec tag, synced overlay (session only, not s
 Comm.requests = {} -- [fullName] = { blessingID, ... } ordered priority list; own reflected too; never saved
 
 local me -- own full name, set on login
-local planBuffer = nil -- incoming PLANAPPLY buffer { sender, rows={}, tanks={} }, applied atomically at PE
+-- incoming PLANAPPLY buffers, one per sender ({ rows={}, tanks={} }, applied
+-- atomically at PE): two leads broadcasting at once must not clobber each other
+local planBuffers = {}
 
 local UPDATE_URL = "https://github.com/klopfer-hello/HolyOrders/releases"
 
@@ -576,6 +578,16 @@ function Comm.SendPlanApply(override)
 		end
 	end
 	table.sort(tanks)
+	-- the snapshot supersedes every single edit still sitting in the debounce or
+	-- the send queue; their revs are stale the moment the rows below are bumped
+	for key, timer in pairs(sendTimers) do
+		if key:find("^SC:") or key:find("^SP:") then
+			timer:Cancel()
+			sendTimers[key] = nil
+		end
+	end
+	CancelQueued("SC")
+	CancelQueued("SP")
 	Send("PS:" .. #owners)
 	for _, owner in ipairs(owners) do
 		BumpRev(owner)
@@ -643,6 +655,12 @@ handlers["H"] = function(sender, payload)
 end
 
 handlers["R"] = function(sender)
+	-- session-only state a freshly reloaded requester cannot recover from disk:
+	-- our buff request (runs for every client — requesting is the one thing
+	-- non-paladins do)
+	if HO.db and HO.db.myRequests then
+		Send("RQ:" .. table.concat(HO.db.myRequests, ","), "WHISPER", sender)
+	end
 	if not IsPaladin() then
 		return -- non-paladins hold no row to share
 	end
@@ -749,30 +767,33 @@ handlers["PS"] = function(sender)
 	-- start (or restart) a snapshot buffer for this sender, discarding any
 	-- half-received one from the same sender
 	if Comm.CanBulk(sender) then
-		planBuffer = { sender = sender, rows = {}, tanks = {} }
+		planBuffers[sender] = { rows = {}, tanks = {} }
 	end
 end
 
 handlers["PR"] = function(sender, payload)
-	if planBuffer and planBuffer.sender == sender then
-		table.insert(planBuffer.rows, payload)
+	local buf = planBuffers[sender]
+	if buf then
+		table.insert(buf.rows, payload)
 	end
 end
 
 handlers["PT"] = function(sender, payload)
-	if planBuffer and planBuffer.sender == sender and payload then
+	local buf = planBuffers[sender]
+	if buf and payload then
 		for name in string.gmatch(payload, "[^|]+") do
-			table.insert(planBuffer.tanks, name)
+			table.insert(buf.tanks, name)
 		end
 	end
 end
 
 handlers["PE"] = function(sender)
-	if not planBuffer or planBuffer.sender ~= sender then
+	local buf = planBuffers[sender]
+	if not buf then
 		return
 	end
-	local rows, tanks = planBuffer.rows, planBuffer.tanks
-	planBuffer = nil
+	local rows, tanks = buf.rows, buf.tanks
+	planBuffers[sender] = nil
 	-- re-check bulk permission at apply time: a demotion mid-stream discards the
 	-- whole buffer rather than applying a snapshot the sender may no longer own
 	if not Comm.CanBulk(sender) then
@@ -1064,13 +1085,32 @@ local MUTATING = {
 	FG = true,
 }
 
+-- messages from members our roster has not caught up with yet: greet replies
+-- and rows arrive within seconds while GROUP_ROSTER_UPDATE fills the roster
+-- over many events during raid formation, so a hard drop loses real state.
+-- Stash them per sender and replay once the roster adds the sender; a sender
+-- who never joins ages out.
+local PENDING_MAX = 8 -- stashed messages per unknown sender
+local PENDING_TTL = 60 -- seconds until an unclaimed stash is junk
+local pendingMsgs = {} -- [sender] = { t = GetTime(), {msgType, payload, channel}, ... }
+
 -- one dispatch path shared by the live event and by FG reassembly: the
 -- group-membership gate, trace logging and handler lookup, so a reassembled
 -- message passes exactly the gate a normal one would
 local function HandleMessage(sender, msgType, payload, channel)
 	if MUTATING[msgType] and not (sender and HO.Roster.byName[sender]) then
+		if sender then
+			local stash = pendingMsgs[sender]
+			if not stash then
+				stash = { t = GetTime() }
+				pendingMsgs[sender] = stash
+			end
+			if #stash < PENDING_MAX then
+				stash[#stash + 1] = { msgType, payload, channel }
+			end
+		end
 		if HO.db and HO.db.options.trace then
-			HO.Log("rx", "rejected " .. msgType .. " from non-member " .. tostring(sender))
+			HO.Log("rx", "stashed " .. msgType .. " from not-yet-known " .. tostring(sender))
 		end
 		return
 	end
@@ -1161,6 +1201,21 @@ HO.RegisterEvent("CHAT_MSG_ADDON", function(prefix, message, channel, senderFull
 	HandleMessage(sender, msgType, payload, channel)
 end)
 
+-- deliver stashed messages whose sender the roster now knows; age out the rest
+local function ReplayPending()
+	local now = GetTime()
+	for sender, stash in pairs(pendingMsgs) do
+		if now - stash.t > PENDING_TTL then
+			pendingMsgs[sender] = nil
+		elseif HO.Roster.byName[sender] then
+			pendingMsgs[sender] = nil
+			for _, m in ipairs(stash) do
+				HandleMessage(sender, m[1], m[2], m[3])
+			end
+		end
+	end
+end
+
 -- session wiring --------------------------------------------------------------
 
 local lastPallySig
@@ -1200,6 +1255,12 @@ local function PruneDeparted()
 			Comm.requests[name] = nil
 		end
 	end
+	-- a leaver's half-received plan snapshot can never complete
+	for name in pairs(planBuffers) do
+		if departed(name) then
+			planBuffers[name] = nil
+		end
+	end
 end
 
 HO.RegisterEvent("PLAYER_LOGIN", function()
@@ -1216,6 +1277,7 @@ HO.RegisterEvent("PLAYER_LOGIN", function()
 	C_ChatInfo.RegisterAddonMessagePrefix(PREFIX)
 	HO.Roster.OnChanged(function()
 		PruneDeparted()
+		ReplayPending()
 		-- greet whenever the paladin composition changes; non-paladin
 		-- clients listen but never announce themselves as paladins
 		local sig = table.concat(HO.Roster.Paladins(), ";")

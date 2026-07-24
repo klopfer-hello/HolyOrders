@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-07-23
+
+Sync protocol stays v4 — compatible with 0.17.x–0.25.x.
+
+### Added
+- Reworked options: a tree of categories (General, Cast bar, Windows & skin,
+  Blessings & pets, Group) in Blizzard's Interface Options, with sliders for
+  both scales (50–150%, applied live) and a **hover tooltip on every option**
+  explaining what it does — fully localized. `/ho opt`, shift-right-click on
+  the handle and shift-click on the minimap button jump straight there.
+- Bundles the Ace3 configuration libraries (BSD-style licence included).
+
+### Changed
+- The assignment window's legend is now four short plain-language lines
+  (icon clicks, name clicks for spec/tank, and what A/G/S mean), with a
+  carefully rewritten German localization.
+
 ## [0.25.0] - 2026-07-22
 
 Sync protocol stays v4 — compatible with 0.17.x–0.24.x.

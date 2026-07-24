@@ -67,8 +67,11 @@ L["Run the deterministic auto-planner"] = "Deterministischen Auto-Planer ausfüh
 L["Force rebuff: refresh everything before the pull"] = "Zwangs-Rebuff: vor dem Pull alles auffrischen"
 L["Save the current plan for this paladin roster"] = "Aktuellen Plan für diese Paladin-Besetzung speichern"
 L["Encounter toggle: swap Salvation for substitutes, click again to restore the previous plan (lead/assist)"] = "Encounter-Schalter: Rettung durch Ersatz-Segen ersetzen; erneut klicken stellt den vorherigen Plan wieder her (Leiter/Assistent)"
-L["click: blessing — right-click: clear — shift-click: mode — click class: members"] = "Klick: Segen — Rechtsklick: leeren — Shift-Klick: Modus — Klick auf Klasse: Mitglieder"
-L["mode: |cff40c0ffA|r auto (greater from %d+ members) — |cffffd100G|r always greater (symbol) — |cff40ff40S|r always 10-min singles"] = "Modus: |cff40c0ffA|r auto (Groß ab %d Mitgliedern) — |cffffd100G|r immer Groß (Symbol) — |cff40ff40S|r immer 10-Min-Einzelsegen"
+-- window legend, plain language ("Nüchtern & knapp")
+L["Click an icon = pick a blessing · right-click = remove · class name = show members"] = "Icon anklicken = Segen wählen · Rechtsklick = entfernen · Klassenname = Mitglieder zeigen"
+L["Click a member's name = change their spec/role · right-click the name = mark as tank"] = "Name anklicken = Skillung/Rolle wechseln · Rechtsklick auf den Namen = als Tank markieren"
+L["Shift-click an icon changes how it is cast:"] = "Shift-Klick auf ein Icon ändert die Wirk-Art:"
+L["|cff40c0ffA|r automatic: big from %d members, small otherwise — |cffffd100G|r always big (whole class, 1 Symbol) — |cff40ff40S|r always small (10 min each)"] = "|cff40c0ffA|r automatisch: Groß ab %d Leuten, sonst Klein — |cffffd100G|r immer Groß (ganze Klasse, 1 Symbol) — |cff40ff40S|r immer Klein (je 10 Min)"
 L["no assignment"] = "keine Zuteilung"
 L["no blessing assigned"] = "Kein Segen zugewiesen"
 L["no blessing assigned — wheel to assign"] = "Kein Segen zugewiesen — mit dem Mausrad zuweisen"

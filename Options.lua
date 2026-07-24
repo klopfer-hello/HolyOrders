@@ -249,7 +249,7 @@ local function BuildOptionsTable()
 					},
 					petBlessing = {
 						type = "select", name = L["Pet blessing"], order = 4,
-						desc = L["Which blessing pets receive."],
+						desc = L["The first blessing pets receive. When several paladins cover the owner's class, they stack further blessings on the pet: Kings, and Wisdom on mana pets."],
 						values = PetValues, sorting = function()
 							local _, sorting = PetValues()
 							return sorting

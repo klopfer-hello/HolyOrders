@@ -47,7 +47,7 @@ L["The addon's look. Switching needs a UI reload — a prompt appears."] = "Das 
 L["Casts the big 30-minute blessing even when only one member of a class is present. Costs a Symbol of Kings per cast."] = "Wirkt den großen 30-Minuten-Segen auch, wenn nur ein Mitglied einer Klasse da ist. Kostet je Wirken ein Symbol der Könige."
 L["Includes hunter pets in planning and casting."] = "Bezieht Jäger-Begleiter in Planung und Buffen ein."
 L["Includes warlock demons in planning and casting."] = "Bezieht Hexenmeister-Dämonen in Planung und Buffen ein."
-L["Which blessing pets receive."] = "Welchen Segen Begleiter erhalten."
+L["The first blessing pets receive. When several paladins cover the owner's class, they stack further blessings on the pet: Kings, and Wisdom on mana pets."] = "Der erste Segen für Begleiter. Decken mehrere Paladine die Klasse des Besitzers ab, stapeln sie weitere Segen auf den Begleiter: Könige, und bei Mana-Begleitern Weisheit."
 L["Allows the other paladins in your group to change your assignments. When off, only lead and assist may."] = "Erlaubt den anderen Paladinen deiner Gruppe, deine Zuteilungen zu ändern. Wenn aus, dürfen es nur Leiter und Assistent."
 L["Broadcasts your own assignments in the format of older blessing addons so their users see your plan. One-way only; off by default."] = "Sendet deine eigenen Zuteilungen im Format älterer Segens-Addons, damit deren Nutzer deinen Plan sehen. Nur in eine Richtung; standardmäßig aus."
 -- dropdown labels

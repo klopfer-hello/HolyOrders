@@ -81,23 +81,56 @@ local function TargetBlessing(plan, me, entry)
 		return override, true
 	end
 	if entry.isPet then
-		-- pets get the configured pet blessing, cast by whoever covers
-		-- the OWNER's class (a hunter's pet is the hunter-coverer's duty;
-		-- the pet's own pseudo-class may have no player row at all)
+		-- pets are the duty of whoever covers the OWNER's class (a hunter's pet
+		-- is the hunter-coverer's duty; the pet's own pseudo-class may have no
+		-- player row at all). Every paladin with such a row takes one slot of a
+		-- ranked pet-blessing list, so several paladins stack the configured
+		-- blessing, Kings and — on mana pets — Wisdom, instead of all
+		-- duplicating the same single buff. Ranking is by sorted paladin name
+		-- over the synced plan, so every client computes the same split.
 		if not PetIncluded(entry) then
 			return nil, false
 		end
 		local ownerEntry = entry.owner and HO.Roster.byName[entry.owner]
 		local ownerClass = ownerEntry and ownerEntry.class
-		local assigns = plan.class[me]
-		local ownerAssign = ownerClass and assigns and assigns[ownerClass]
-		-- a none-marked owner class (no id) is not a real assignment: its pets
-		-- are not my duty either
-		if ownerAssign and ownerAssign.id then
-			local petOpts = HO.db.options.pets
-			return (petOpts and petOpts.blessing) or 2, false
+		if not ownerClass then
+			return nil, false
 		end
-		return nil, false
+		local covering = {}
+		for pally, rows in pairs(plan.class) do
+			local a = rows[ownerClass]
+			-- a none-marked owner class (no id) is not a real assignment: its
+			-- pets are nobody's duty; leavers' stale rows must not hold a slot
+			if a and a.id and HO.Roster.byName[pally] then
+				table.insert(covering, pally)
+			end
+		end
+		table.sort(covering)
+		local rank
+		for i, pally in ipairs(covering) do
+			if pally == me then
+				rank = i
+				break
+			end
+		end
+		if not rank then
+			return nil, false
+		end
+		local petOpts = HO.db.options.pets
+		local list, seen = {}, {}
+		local function add(id)
+			if id and not seen[id] then
+				seen[id] = true
+				list[#list + 1] = id
+			end
+		end
+		add((petOpts and petOpts.blessing) or 2)
+		add(3) -- Kings
+		add(2) -- Might
+		if entry.unit and UnitPowerType(entry.unit) == 0 then
+			add(1) -- Wisdom, only for pets that actually run on mana
+		end
+		return list[rank], false
 	end
 	local assigns = plan.class[me]
 	local assign = assigns and entry.class and assigns[entry.class]

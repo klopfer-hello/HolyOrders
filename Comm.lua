@@ -647,6 +647,10 @@ handlers["R"] = function(sender)
 		return -- non-paladins hold no row to share
 	end
 	C_Timer.After(math.random() * HELLO_DELAY, function()
+		-- hello first: a client that reloaded mid-group pulls with R, and the
+		-- once-per-session greet-back stays silent for it — this reply is how
+		-- its peer list (versions, caps) gets rebuilt
+		Comm.SendHello("WHISPER", sender)
 		Comm.SendFull(sender)
 	end)
 end
@@ -1160,6 +1164,7 @@ end)
 -- session wiring --------------------------------------------------------------
 
 local lastPallySig
+local pulled = false -- one state pull per session, on the first grouped roster
 
 -- drop peer + fragment state for members who left the group: a leaver's stale
 -- openEdit/caps/greeted and any half-received fragments must not linger. Own
@@ -1228,6 +1233,13 @@ HO.RegisterEvent("PLAYER_LOGIN", function()
 			-- so a requester who relogs or regroups is not forgotten
 			if HO.db and HO.db.myRequests and IsInGroup() then
 				Comm.SendRequest(HO.db.myRequests)
+			end
+			-- loaded into a group whose members already greeted us in THEIR
+			-- sessions (mid-raid /reload): our hello draws no replies, so pull —
+			-- every paladin answers R with a whispered hello + row
+			if not pulled and IsInGroup() then
+				pulled = true
+				Comm.RequestSync()
 			end
 		end
 	end)

@@ -1,4 +1,8 @@
--- HolyOrders — options panel (mounted in Blizzard's Interface Options)
+-- HolyOrders — options (AceConfig)
+-- A tree-navigated options dialog built on the bundled Ace3 config libraries:
+-- categories on the left, the selected page on the right with headers, square
+-- toggles, sliders for scales and dropdowns for multi-choice values. Mounted
+-- in Blizzard's Interface Options; /ho opt navigates straight to it.
 
 local HO = HolyOrders
 local Options = {}
@@ -6,8 +10,8 @@ HO.Options = Options
 local L = HO.L
 
 local PET_CYCLE = { 2, 1, 3 } -- Might > Wisdom > Kings
-local GROW_CYCLE = { "right", "left", "down", "up" }
-local FLYOUT_CYCLE = { "left", "right", "up", "down" }
+local GROW_DIRS = { "right", "left", "down", "up" }
+local FLYOUT_DIRS = { "left", "right", "up", "down" }
 
 -- switching the skin rebuilds every frame's chrome, which only happens at UI
 -- load — so offer the reload right away (or let the user do it later)
@@ -25,18 +29,8 @@ StaticPopupDialogs["HOLYORDERS_SKIN_RELOAD"] = {
 }
 
 function Options.PromptSkinReload()
-	local HOL = HO.L
-	StaticPopup_Show("HOLYORDERS_SKIN_RELOAD", HOL["the new skin applies after a UI reload — reload now?"])
+	StaticPopup_Show("HOLYORDERS_SKIN_RELOAD", HO.L["the new skin applies after a UI reload — reload now?"])
 end
-local REFRESH_INTERVAL = 1.0
-local LABEL_WIDTH = 480 -- wrap long (German) labels instead of running off the panel
-
-local panel
-local category -- retail Settings category handle (nil on 2.5.6)
-local checks = {}
-local ITEMS
-
-local SCALE_CYCLE = { 0.8, 0.9, 1.0, 1.1, 1.25, 1.5 }
 
 function Options.Ensure()
 	local o = HO.db.options
@@ -46,23 +40,6 @@ function Options.Ensure()
 	o.pets = o.pets or { hunter = true, warlock = false, blessing = 2 }
 	o.minimap = o.minimap or { angle = 200 }
 	return o
-end
-
-local function Refresh()
-	if not panel or not panel:IsShown() then
-		return
-	end
-	local o = Options.Ensure()
-	for i, item in ipairs(ITEMS) do
-		checks[i]:SetChecked(item.get(o) and true or false)
-	end
-	local blessing = HO.Data.blessings[o.pets.blessing or 2]
-	panel.petBtn.value:SetText(blessing and (blessing.name or blessing.key) or "?")
-	panel.growBtn.value:SetText(o.bar.grow or "right")
-	panel.flyoutBtn.value:SetText(o.bar.flyout or "left")
-	panel.skinBtn.value:SetText(o.skin or "default")
-	panel.barScaleBtn.value:SetText(string.format("%d%%", math.floor((o.bar.scale or 1) * 100 + 0.5)))
-	panel.winScaleBtn.value:SetText(string.format("%d%%", math.floor(((o.window and o.window.scale) or 1) * 100 + 0.5)))
 end
 
 -- toggles that change plan/pet display must also update an open assignment
@@ -76,288 +53,277 @@ local function RefreshAll()
 	end
 end
 
-ITEMS = {
-	{ label = L["Show cast bar"], get = function(o) return not o.bar.hidden end, set = function(o, v) o.bar.hidden = not v; HO.Bar.Refresh() end },
-	{ label = L["Keep cast bar above other windows"], get = function(o) return o.bar.front == true end, set = function(o, v) o.bar.front = v; if HO.Bar and HO.Bar.ApplyStrata then HO.Bar.ApplyStrata() end end },
-	{ label = L["Open edit: others may change my assignments"], get = function(o) return o.openEdit end, set = function(o, v) o.openEdit = v; HO.Comm.SendHello() end },
-	{ label = L["Prefer greater blessings even for single members"], get = function(o) return o.greaterMin == 1 end, set = function(o, v) o.greaterMin = v and 1 or 2; RefreshAll() end },
-	{ label = L["Buff hunter pets"], get = function(o) return o.pets.hunter ~= false end, set = function(o, v) o.pets.hunter = v; RefreshAll() end },
-	{ label = L["Buff warlock pets"], get = function(o) return o.pets.warlock == true end, set = function(o, v) o.pets.warlock = v; RefreshAll() end },
-	{ label = L["Show minimap button"], get = function(o) return not o.minimap.hide end, set = function(o, v) o.minimap.hide = not v; HO.MinimapButton.UpdateShown() end },
-	{ label = L["Show status messages in chat"], get = function(o) return o.verbose == true end, set = function(o, v) o.verbose = v end },
-	{ label = L["Share assignments with legacy blessing addons"], get = function(o) return o.legacyBroadcast == true end, set = function(o, v) o.legacyBroadcast = v; if HO.Interop then HO.Interop.SetEnabled(v) end end },
-	{ label = L["Log sync messages (debug)"], get = function(o) return o.trace end, set = function(o, v) o.trace = v end },
-}
+-- value lists -------------------------------------------------------------------
 
-function Options.Create()
-	if panel then
-		return
+local function DirValues(dirs)
+	local values, sorting = {}, {}
+	for _, dir in ipairs(dirs) do
+		values[dir] = dir
+		sorting[#sorting + 1] = dir
 	end
-	-- a plain Frame is all a Blizzard options panel needs; the container reparents
-	-- and sizes it (~600 px wide) once it is registered as a category
-	panel = CreateFrame("Frame", "HolyOrdersOptionsPanel", UIParent)
-	panel.name = "HolyOrders"
-	panel:Hide()
-
-	local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-	title:SetPoint("TOPLEFT", 16, -16)
-	title:SetText(L["HolyOrders — Options"])
-
-	-- keep the panel in sync with /ho toggles made in chat while it is shown;
-	-- panels stay mounted in the container, so OnShow/OnHide fire as the user
-	-- navigates between categories
-	panel:SetScript("OnShow", function(self)
-		Refresh()
-		if not self.ticker then
-			self.ticker = C_Timer.NewTicker(REFRESH_INTERVAL, Refresh)
-		end
-	end)
-	panel:SetScript("OnHide", function(self)
-		if self.ticker then
-			self.ticker:Cancel()
-			self.ticker = nil
-		end
-	end)
-
-	local topOffset = 48 -- clear the title
-	for i, item in ipairs(ITEMS) do
-		local check = CreateFrame("CheckButton", "HolyOrdersOptCheck" .. i, panel, "UICheckButtonTemplate")
-		check:SetSize(24, 24)
-		check:SetPoint("TOPLEFT", 16, -(topOffset + (i - 1) * 26))
-		local labelText = _G["HolyOrdersOptCheck" .. i .. "Text"]
-		labelText:SetText(item.label)
-		-- cap width so long labels wrap onto a second line instead of spilling
-		labelText:SetWidth(LABEL_WIDTH)
-		labelText:SetWordWrap(true)
-		labelText:SetJustifyH("LEFT")
-		check:SetScript("OnClick", function(self)
-			item.set(Options.Ensure(), self:GetChecked() and true or false)
-			Refresh()
-		end)
-		checks[i] = check
-	end
-
-	local buttonsTop = topOffset + #ITEMS * 26 + 8
-
-	-- drop-down selects -----------------------------------------------------
-	-- own lightweight widget instead of the Blizzard dropdown: the shared
-	-- dropdown implementation is a classic taint vector (risky next to our
-	-- secure cast frames), and this one is a plain button + choice list
-	local openList -- the currently open choice list, if any
-	local function CloseOpenList()
-		if openList then
-			openList:Hide()
-			openList = nil
-		end
-	end
-	panel:HookScript("OnHide", CloseOpenList)
-
-	local SELECT_ROW_H = 20
-	local WHITE = "Interface\\Buttons\\WHITE8x8"
-	-- a dropdown select in the familiar options style: a small label above a
-	-- dark value box with an arrow; clicking the box opens the choice list
-	-- below it. choicesFn returns {value, text, current} rows; the current
-	-- value text in the box is maintained by Refresh via btn.value.
-	local function CreateSelect(yOffset, labelKey, choicesFn, onSelect)
-		local label = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-		label:SetPoint("TOPLEFT", 16, -yOffset)
-		label:SetText(L[labelKey])
-		local btn = CreateFrame("Button", nil, panel, "BackdropTemplate")
-		btn:SetSize(240, 24)
-		btn:SetPoint("TOPLEFT", 16, -(yOffset + 14))
-		if btn.SetBackdrop then
-			btn:SetBackdrop({ bgFile = WHITE, edgeFile = WHITE, edgeSize = 1 })
-			btn:SetBackdropColor(0.08, 0.08, 0.10, 0.95)
-			btn:SetBackdropBorderColor(0.35, 0.35, 0.40, 1)
-		end
-		btn.value = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-		btn.value:SetPoint("LEFT", 8, 0)
-		btn.arrow = btn:CreateTexture(nil, "ARTWORK")
-		btn.arrow:SetSize(18, 18)
-		btn.arrow:SetPoint("RIGHT", -3, 0)
-		btn.arrow:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up")
-		btn.hl = btn:CreateTexture(nil, "HIGHLIGHT")
-		btn.hl:SetAllPoints()
-		btn.hl:SetColorTexture(1, 1, 1, 0.05)
-		local list = CreateFrame("Frame", nil, panel, "BackdropTemplate")
-		list:SetPoint("TOPLEFT", btn, "BOTTOMLEFT", 0, -1)
-		list:SetWidth(240)
-		list:SetFrameStrata("DIALOG")
-		list:Hide()
-		list.bg = list:CreateTexture(nil, "BACKGROUND")
-		list.bg:SetAllPoints()
-		list.bg:SetColorTexture(0.06, 0.06, 0.08, 0.97)
-		if list.SetBackdrop then
-			list:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
-			list:SetBackdropBorderColor(HO.Colors.rgb("goldDeep", 1))
-		end
-		list.rows = {}
-		btn:SetScript("OnClick", function()
-			if list:IsShown() then
-				CloseOpenList()
-				return
-			end
-			CloseOpenList()
-			local choices = choicesFn()
-			for i, choice in ipairs(choices) do
-				local row = list.rows[i]
-				if not row then
-					row = CreateFrame("Button", nil, list)
-					row:SetSize(238, SELECT_ROW_H)
-					row:SetPoint("TOPLEFT", 1, -(1 + (i - 1) * SELECT_ROW_H))
-					row.hl = row:CreateTexture(nil, "HIGHLIGHT")
-					row.hl:SetAllPoints()
-					row.hl:SetColorTexture(1, 1, 1, 0.08)
-					row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-					row.text:SetPoint("LEFT", 8, 0)
-					row:SetScript("OnClick", function(self)
-						CloseOpenList()
-						onSelect(self.value)
-						Refresh()
-					end)
-					list.rows[i] = row
-				end
-				row.value = choice.value
-				row.text:SetText(choice.text)
-				if choice.current then
-					row.text:SetTextColor(HO.Colors.rgb("goldBright"))
-				else
-					row.text:SetTextColor(0.9, 0.9, 0.9)
-				end
-				row:Show()
-			end
-			for i = #choices + 1, #list.rows do
-				list.rows[i]:Hide()
-			end
-			list:SetHeight(2 + #choices * SELECT_ROW_H)
-			list:Show()
-			openList = list
-		end)
-		return btn
-	end
-
-	-- growth direction of the cast bar
-	panel.growBtn = CreateSelect(buttonsTop, "Bar grows", function()
-		local o = Options.Ensure()
-		local choices = {}
-		for _, dir in ipairs(GROW_CYCLE) do
-			choices[#choices + 1] = { value = dir, text = dir, current = (o.bar.grow or "right") == dir }
-		end
-		return choices
-	end, function(value)
-		Options.Ensure().bar.grow = value
-		HO.Bar.Refresh()
-	end)
-
-	-- pet blessing choice (localized blessing names)
-	panel.petBtn = CreateSelect(buttonsTop + 40, "Pet blessing", function()
-		local o = Options.Ensure()
-		local choices = {}
-		for _, id in ipairs(PET_CYCLE) do
-			local blessing = HO.Data.blessings[id]
-			choices[#choices + 1] = {
-				value = id,
-				text = blessing and (blessing.name or blessing.key) or tostring(id),
-				current = (o.pets.blessing or 2) == id,
-			}
-		end
-		return choices
-	end, function(value)
-		Options.Ensure().pets.blessing = value
-		RefreshAll()
-	end)
-
-	-- cast bar scale: the bar is a protected frame, so ApplyScale is
-	-- combat-guarded and self-applies on PLAYER_REGEN_ENABLED
-	panel.barScaleBtn = CreateSelect(buttonsTop + 80, "Cast bar scale", function()
-		local o = Options.Ensure()
-		local choices = {}
-		for _, s in ipairs(SCALE_CYCLE) do
-			choices[#choices + 1] = {
-				value = s,
-				text = string.format("%d%%", math.floor(s * 100 + 0.5)),
-				current = (o.bar.scale or 1.0) == s,
-			}
-		end
-		return choices
-	end, function(value)
-		Options.Ensure().bar.scale = value
-		if HO.Bar and HO.Bar.ApplyScale then
-			HO.Bar.ApplyScale()
-		end
-	end)
-
-	-- window scale: applies to the assignment window and the buff-request window
-	panel.winScaleBtn = CreateSelect(buttonsTop + 120, "Window scale", function()
-		local o = Options.Ensure()
-		local choices = {}
-		for _, s in ipairs(SCALE_CYCLE) do
-			choices[#choices + 1] = {
-				value = s,
-				text = string.format("%d%%", math.floor(s * 100 + 0.5)),
-				current = ((o.window and o.window.scale) or 1.0) == s,
-			}
-		end
-		return choices
-	end, function(value)
-		local o = Options.Ensure()
-		o.window = o.window or {}
-		o.window.scale = value
-		if HO.Window and HO.Window.ApplyScale then
-			HO.Window.ApplyScale()
-		end
-		if HO.Request and HO.Request.ApplyScale then
-			HO.Request.ApplyScale()
-		end
-	end)
-
-	-- fly-out direction: which side of a class button the member panel opens on
-	panel.flyoutBtn = CreateSelect(buttonsTop + 160, "Fly-out opens", function()
-		local o = Options.Ensure()
-		local choices = {}
-		for _, dir in ipairs(FLYOUT_CYCLE) do
-			choices[#choices + 1] = { value = dir, text = dir, current = (o.bar.flyout or "left") == dir }
-		end
-		return choices
-	end, function(value)
-		Options.Ensure().bar.flyout = value
-		if HO.Bar and HO.Bar.Refresh then
-			HO.Bar.Refresh() -- re-anchors the panels out of combat
-		end
-	end)
-
-	-- UI skin: chrome is built at load, so a change prompts for a reload
-	panel.skinBtn = CreateSelect(buttonsTop + 200, "Skin", function()
-		local o = Options.Ensure()
-		local choices = {}
-		for _, s in ipairs(HO.Skin.SKINS) do
-			choices[#choices + 1] = { value = s, text = s, current = (o.skin or "default") == s }
-		end
-		return choices
-	end, function(value)
-		Options.Ensure().skin = value
-		Options.PromptSkinReload()
-	end)
-
-	-- register with whichever options system this client provides
-	if InterfaceOptions_AddCategory then
-		InterfaceOptions_AddCategory(panel)
-	elseif Settings and Settings.RegisterCanvasLayoutCategory then
-		category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
-		Settings.RegisterAddOnCategory(category)
-	end
+	return values, sorting
 end
 
--- opens the Blizzard options at our category (kept as the public entry point;
--- other modules and /ho opt call this)
+local function PetValues()
+	local values, sorting = {}, {}
+	for _, id in ipairs(PET_CYCLE) do
+		local blessing = HO.Data.blessings[id]
+		values[id] = blessing and (blessing.name or blessing.key) or tostring(id)
+		sorting[#sorting + 1] = id
+	end
+	return values, sorting
+end
+
+local function SkinValues()
+	local values, sorting = {}, {}
+	for _, s in ipairs(HO.Skin.SKINS) do
+		values[s] = s
+		sorting[#sorting + 1] = s
+	end
+	return values, sorting
+end
+
+-- options table -----------------------------------------------------------------
+
+local GROW_VALUES, GROW_SORT = DirValues(GROW_DIRS)
+local FLYOUT_VALUES, FLYOUT_SORT = DirValues(FLYOUT_DIRS)
+
+local function BuildOptionsTable()
+	return {
+		type = "group",
+		childGroups = "tree",
+		args = {
+			general = {
+				type = "group", name = L["General"], order = 1,
+				args = {
+					head = { type = "header", name = L["General"], order = 0 },
+					minimap = {
+						type = "toggle", name = L["Show minimap button"], order = 1, width = "full",
+						desc = L["Shows or hides the round HolyOrders button on the minimap edge."],
+						get = function() return not Options.Ensure().minimap.hide end,
+						set = function(_, v)
+							Options.Ensure().minimap.hide = not v
+							HO.MinimapButton.UpdateShown()
+						end,
+					},
+					verbose = {
+						type = "toggle", name = L["Show status messages in chat"], order = 2, width = "full",
+						desc = L["Prints routine status messages (sync, auto-planner results) to the chat. Errors and command replies always show."],
+						get = function() return Options.Ensure().verbose == true end,
+						set = function(_, v) Options.Ensure().verbose = v end,
+					},
+					trace = {
+						type = "toggle", name = L["Log sync messages (debug)"], order = 3, width = "full",
+						desc = L["Records the addon sync traffic in the debug log (/ho log). Only needed for troubleshooting."],
+						get = function() return Options.Ensure().trace end,
+						set = function(_, v) Options.Ensure().trace = v end,
+					},
+				},
+			},
+			bar = {
+				type = "group", name = L["Cast bar"], order = 2,
+				args = {
+					head = { type = "header", name = L["Cast bar"], order = 0 },
+					show = {
+						type = "toggle", name = L["Show cast bar"], order = 1, width = "full",
+						desc = L["Shows the cast bar with one button per class duty. It appears automatically when you have blessings to cast."],
+						get = function() return not Options.Ensure().bar.hidden end,
+						set = function(_, v)
+							Options.Ensure().bar.hidden = not v
+							HO.Bar.Refresh()
+						end,
+					},
+					front = {
+						type = "toggle", name = L["Keep cast bar above other windows"], order = 2, width = "full",
+						desc = L["Raises the bar above other addon windows (unit frames and the like) that would otherwise cover it."],
+						get = function() return Options.Ensure().bar.front == true end,
+						set = function(_, v)
+							Options.Ensure().bar.front = v
+							if HO.Bar and HO.Bar.ApplyStrata then
+								HO.Bar.ApplyStrata()
+							end
+						end,
+					},
+					grow = {
+						type = "select", name = L["Bar grows"], order = 3,
+						desc = L["The direction in which the bar's buttons line up, starting at the handle."],
+						values = GROW_VALUES, sorting = GROW_SORT,
+						get = function() return Options.Ensure().bar.grow or "right" end,
+						set = function(_, v)
+							Options.Ensure().bar.grow = v
+							HO.Bar.Refresh()
+						end,
+					},
+					flyout = {
+						type = "select", name = L["Fly-out opens"], order = 4,
+						desc = L["Which side of a class button the member list opens on."],
+						values = FLYOUT_VALUES, sorting = FLYOUT_SORT,
+						get = function() return Options.Ensure().bar.flyout or "left" end,
+						set = function(_, v)
+							Options.Ensure().bar.flyout = v
+							HO.Bar.Refresh() -- re-anchors the panels out of combat
+						end,
+					},
+					scale = {
+						type = "range", name = L["Cast bar scale"], order = 5,
+						desc = L["Size of the cast bar. Applies immediately; a change made in combat applies after the fight."],
+						min = 0.5, max = 1.5, step = 0.05, isPercent = true, width = "full",
+						get = function() return Options.Ensure().bar.scale or 1.0 end,
+						-- the bar is protected: ApplyScale is combat-guarded and
+						-- re-applies itself on PLAYER_REGEN_ENABLED
+						set = function(_, v)
+							Options.Ensure().bar.scale = v
+							if HO.Bar and HO.Bar.ApplyScale then
+								HO.Bar.ApplyScale()
+							end
+						end,
+					},
+				},
+			},
+			windows = {
+				type = "group", name = L["Windows & skin"], order = 3,
+				args = {
+					head = { type = "header", name = L["Windows & skin"], order = 0 },
+					scale = {
+						type = "range", name = L["Window scale"], order = 1,
+						desc = L["Size of the assignment window and the buff-request window."],
+						min = 0.5, max = 1.5, step = 0.05, isPercent = true, width = "full",
+						get = function() return (Options.Ensure().window and Options.Ensure().window.scale) or 1.0 end,
+						set = function(_, v)
+							local o = Options.Ensure()
+							o.window = o.window or {}
+							o.window.scale = v
+							if HO.Window and HO.Window.ApplyScale then
+								HO.Window.ApplyScale()
+							end
+							if HO.Request and HO.Request.ApplyScale then
+								HO.Request.ApplyScale()
+							end
+						end,
+					},
+					skin = {
+						type = "select", name = L["Skin"], order = 2,
+						desc = L["The addon's look. Switching needs a UI reload — a prompt appears."],
+						values = SkinValues, sorting = function()
+							local _, sorting = SkinValues()
+							return sorting
+						end,
+						get = function() return Options.Ensure().skin or "default" end,
+						set = function(_, v)
+							Options.Ensure().skin = v
+							Options.PromptSkinReload()
+						end,
+					},
+				},
+			},
+			blessings = {
+				type = "group", name = L["Blessings & pets"], order = 4,
+				args = {
+					head = { type = "header", name = L["Blessings & pets"], order = 0 },
+					greaterSingle = {
+						type = "toggle", name = L["Prefer greater blessings even for single members"], order = 1, width = "full",
+						desc = L["Casts the big 30-minute blessing even when only one member of a class is present. Costs a Symbol of Kings per cast."],
+						get = function() return Options.Ensure().greaterMin == 1 end,
+						set = function(_, v)
+							Options.Ensure().greaterMin = v and 1 or 2
+							RefreshAll()
+						end,
+					},
+					hunterPets = {
+						type = "toggle", name = L["Buff hunter pets"], order = 2, width = "full",
+						desc = L["Includes hunter pets in planning and casting."],
+						get = function() return Options.Ensure().pets.hunter ~= false end,
+						set = function(_, v)
+							Options.Ensure().pets.hunter = v
+							RefreshAll()
+						end,
+					},
+					warlockPets = {
+						type = "toggle", name = L["Buff warlock pets"], order = 3, width = "full",
+						desc = L["Includes warlock demons in planning and casting."],
+						get = function() return Options.Ensure().pets.warlock == true end,
+						set = function(_, v)
+							Options.Ensure().pets.warlock = v
+							RefreshAll()
+						end,
+					},
+					petBlessing = {
+						type = "select", name = L["Pet blessing"], order = 4,
+						desc = L["Which blessing pets receive."],
+						values = PetValues, sorting = function()
+							local _, sorting = PetValues()
+							return sorting
+						end,
+						get = function() return Options.Ensure().pets.blessing or 2 end,
+						set = function(_, v)
+							Options.Ensure().pets.blessing = v
+							RefreshAll()
+						end,
+					},
+				},
+			},
+			group = {
+				type = "group", name = L["Group"], order = 5,
+				args = {
+					head = { type = "header", name = L["Group"], order = 0 },
+					openEdit = {
+						type = "toggle", name = L["Open edit: others may change my assignments"], order = 1, width = "full",
+						desc = L["Allows the other paladins in your group to change your assignments. When off, only lead and assist may."],
+						get = function() return Options.Ensure().openEdit end,
+						set = function(_, v)
+							Options.Ensure().openEdit = v
+							HO.Comm.SendHello()
+						end,
+					},
+					legacy = {
+						type = "toggle", name = L["Share assignments with legacy blessing addons"], order = 2, width = "full",
+						desc = L["Broadcasts your own assignments in the format of older blessing addons so their users see your plan. One-way only; off by default."],
+						get = function() return Options.Ensure().legacyBroadcast == true end,
+						set = function(_, v)
+							Options.Ensure().legacyBroadcast = v
+							if HO.Interop then
+								HO.Interop.SetEnabled(v)
+							end
+						end,
+					},
+				},
+			},
+		},
+	}
+end
+
+-- registration ------------------------------------------------------------------
+
+local registered = false
+local blizPanel
+
+function Options.Create()
+	if registered then
+		return
+	end
+	local AceConfig = LibStub and LibStub("AceConfig-3.0", true)
+	local AceConfigDialog = LibStub and LibStub("AceConfigDialog-3.0", true)
+	if not (AceConfig and AceConfigDialog) then
+		HO.Log("options", "AceConfig libraries missing — options unavailable")
+		return
+	end
+	registered = true
+	AceConfig:RegisterOptionsTable("HolyOrders", BuildOptionsTable())
+	-- mounted under Interface > AddOns; Options.Toggle navigates there
+	blizPanel = AceConfigDialog:AddToBlizOptions("HolyOrders", "HolyOrders")
+end
+
+-- opens the Blizzard Interface Options at our category (the Ace pages are
+-- mounted there); kept as the public entry point — other modules and /ho opt
+-- call this
 function Options.Toggle()
 	Options.Create()
-	if InterfaceOptionsFrame_OpenToCategory then
+	if blizPanel and InterfaceOptionsFrame_OpenToCategory then
 		-- classic quirk: the first call may not navigate on a cold frame
-		InterfaceOptionsFrame_OpenToCategory(panel)
-		InterfaceOptionsFrame_OpenToCategory(panel)
-	elseif Settings and Settings.OpenToCategory and category then
-		Settings.OpenToCategory(category.ID or category:GetID())
+		InterfaceOptionsFrame_OpenToCategory(blizPanel)
+		InterfaceOptionsFrame_OpenToCategory(blizPanel)
+	elseif Settings and Settings.OpenToCategory and blizPanel then
+		Settings.OpenToCategory(blizPanel.name or "HolyOrders")
 	end
 end
 

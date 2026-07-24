@@ -159,17 +159,22 @@ function Planner.SalvSubstitute(pally, classToken, plan)
 			end
 		end
 	end
-	local prefs = HO.db.prefs[classToken] or DEFAULT_PREFS[classToken]
+	-- candidate order decides what replaces Salvation: the class's preference
+	-- chain first (a user copy, then the shipped one — it ranks the right stat
+	-- blessing per class), Kings as the universal filler, and Light strictly
+	-- LAST. Light is the weakest still-useful blessing, so it must only appear
+	-- once every stronger option is already covered by another paladin.
 	local candidates = {}
-	if prefs and prefs.default then
-		for _, id in ipairs(prefs.default) do
+	local function append(list)
+		for _, id in ipairs(list or {}) do
 			table.insert(candidates, id)
 		end
 	end
-	table.insert(candidates, LIGHT)
-	table.insert(candidates, KINGS)
-	table.insert(candidates, WISDOM)
-	table.insert(candidates, MIGHT)
+	local userPrefs = HO.db.prefs[classToken]
+	append(userPrefs and userPrefs.default)
+	local shipped = DEFAULT_PREFS[classToken]
+	append(shipped and shipped.default)
+	append({ KINGS, LIGHT })
 	for _, id in ipairs(candidates) do
 		if id ~= SALVATION and not received[id]
 			and HO.Data.IsEligible(classToken, id, false) and Available(pally, id) then

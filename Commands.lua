@@ -432,7 +432,19 @@ HO.commands["peers"] = function()
 		n = n + 1
 		HO.PrintLine(name .. " — v" .. tostring(peer.version) .. (peer.openEdit and " (open edit)" or ""))
 	end
-	HO.Print(n .. " HolyOrders paladin(s) known" .. (n == 0 and " — none seen yet (are they in your group?)" or ""))
+	-- clients heard on the wire but speaking another protocol version: sync with
+	-- them is disabled, but silence here would look like they have no addon
+	local bad = 0
+	for name, proto in pairs(HO.Comm.protoMismatch) do
+		bad = bad + 1
+		HO.PrintLine(name .. " — INCOMPATIBLE (their protocol " .. tostring(proto)
+			.. ", ours " .. HO.Comm.PROTO .. ") — no sync until "
+			.. (tonumber(proto) and tonumber(HO.Comm.PROTO) and tonumber(proto) < tonumber(HO.Comm.PROTO)
+				and "they update" or "you update"))
+	end
+	HO.Print(n .. " HolyOrders paladin(s) known"
+		.. (bad > 0 and (", " .. bad .. " incompatible") or "")
+		.. (n == 0 and bad == 0 and " — none seen yet (are they in your group?)" or ""))
 end
 
 HO.commands["openedit"] = function()

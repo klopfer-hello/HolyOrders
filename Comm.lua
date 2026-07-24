@@ -11,6 +11,7 @@ local PREFIX = "HolyOrders"
 -- v4: PLANAPPLY is an authoritative snapshot (tank list in its own PT messages,
 -- atomic PE apply), spec-tag overlay sync (ST). Breaking wire change from v3.
 local PROTO = "4"
+Comm.PROTO = PROTO
 local SET_DELAY = 1.0
 local HELLO_DELAY = 2.0
 local MAX_MSG = 250 -- WoW addon messages cap at 255 bytes
@@ -1043,7 +1044,8 @@ handlers["RQ"] = function(sender, payload)
 	RefreshUI()
 end
 
-local protoWarned = {}
+local protoWarned = {} -- [sender] = their protocol number; also feeds /ho peers
+Comm.protoMismatch = protoWarned
 
 -- mutating message types require the sender to be a current group member; when
 -- ungrouped there is no roster so all of these are rejected. FG only ever wraps
@@ -1124,12 +1126,18 @@ HO.RegisterEvent("CHAT_MSG_ADDON", function(prefix, message, channel, senderFull
 	if prefix ~= PREFIX or not me then
 		return -- not ours, or before login init
 	end
-	local sender = senderFull and senderFull:match("^[^%-]+%-[^%-]+") or senderFull
+	-- the classic client delivers same-realm senders WITHOUT the realm suffix;
+	-- peers, plan rows and the roster are all keyed by full "Name-Realm" names,
+	-- so qualify bare senders with our own realm (cross-realm senders carry theirs)
+	local sender = senderFull
+	if sender and not sender:find("-", 1, true) then
+		sender = sender .. "-" .. (GetNormalizedRealmName() or "")
+	end
 	local proto, msgType, payload = message:match("^(%d+):(%u+):?(.*)$")
 	if proto ~= PROTO then
 		-- incompatible protocol: warn once per sender instead of silence
 		if proto and sender and sender ~= me and not protoWarned[sender] then
-			protoWarned[sender] = true
+			protoWarned[sender] = proto
 			HO.Log("comm", "protocol mismatch from " .. sender .. " (theirs " .. proto .. ", ours " .. PROTO .. ")")
 			-- say WHO is outdated: the lower protocol number needs the update
 			local theirs, ours = tonumber(proto), tonumber(PROTO)
@@ -1172,6 +1180,13 @@ local function PruneDeparted()
 	for name in pairs(fragBuffers) do
 		if departed(name) then
 			fragBuffers[name] = nil
+		end
+	end
+	-- forget mismatch flags of leavers: they stop cluttering /ho peers, and a
+	-- rejoin after updating warns (or clears) freshly
+	for name in pairs(protoWarned) do
+		if departed(name) then
+			protoWarned[name] = nil
 		end
 	end
 	-- a leaver's buff request must not linger on our screen (own is kept)

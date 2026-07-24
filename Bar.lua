@@ -39,6 +39,10 @@ local HANDLE_DOTS = {
 	green = "Interface\\COMMON\\Indicator-Green",
 }
 local WHITE8 = "Interface\\Buttons\\WHITE8x8"
+-- biker skin: tintable wheel sprite (dark tire, bright rim/spokes take the tint)
+local WHEEL_TEX = "Interface\\AddOns\\HolyOrders\\Icons\\WheelHandle"
+local WHEEL_SIZE = 28
+local WHEEL_SPIN_SECONDS = 1.2 -- one full turn while a force rebuff runs
 
 -- the wide-row legacy bar only stacks vertically: a horizontal grow option is
 -- treated as "down" there, every other skin honours the option as-is
@@ -63,6 +67,8 @@ local function HandleAlong()
 		return LEGACY_HANDLE + 2
 	elseif style == "strip" then
 		return STRIP_HANDLE_HIT
+	elseif style == "wheel" then
+		return WHEEL_SIZE + 2
 	end
 	return HANDLE_WIDTH
 end
@@ -126,6 +132,9 @@ local function LayoutBar()
 	local handleStyle = HO.Skin.HandleStyle()
 	if handleStyle == "dot" then
 		handle:SetSize(LEGACY_HANDLE, LEGACY_HANDLE)
+		handle.tex:SetAllPoints(handle)
+	elseif handleStyle == "wheel" then
+		handle:SetSize(WHEEL_SIZE, WHEEL_SIZE)
 		handle.tex:SetAllPoints(handle)
 	elseif handleStyle == "strip" then
 		local bc = ButtonCross()
@@ -1278,6 +1287,31 @@ function Bar.Refresh()
 		if handleStyle == "dot" then
 			handle.tex:SetTexture(HANDLE_DOTS[state]) -- little round status ball
 			handle.tex:SetVertexColor(1, 1, 1, 1)
+		elseif handleStyle == "wheel" then
+			handle.tex:SetTexture(WHEEL_TEX) -- rim and spokes take the status tint
+			if state == "rest" then
+				handle.tex:SetVertexColor(HO.Colors.rgb("handleRest", 1))
+			else
+				handle.tex:SetVertexColor(HO.Colors.rgb(state, 1))
+			end
+			-- the wheel spins while a force rebuff runs (texture animation only —
+			-- nothing protected, safe in combat)
+			if not handle.spin and handle.tex.CreateAnimationGroup then
+				handle.spin = handle.tex:CreateAnimationGroup()
+				local rot = handle.spin:CreateAnimation("Rotation")
+				rot:SetDegrees(-360)
+				rot:SetDuration(WHEEL_SPIN_SECONDS)
+				handle.spin:SetLooping("REPEAT")
+			end
+			if handle.spin then
+				if HO.Engine.ForceActive() then
+					if not handle.spin:IsPlaying() then
+						handle.spin:Play()
+					end
+				elseif handle.spin:IsPlaying() then
+					handle.spin:Stop()
+				end
+			end
 		elseif handleStyle == "strip" then
 			handle.tex:SetTexture(WHITE8) -- slim strip tinted by status
 			if state == "rest" then

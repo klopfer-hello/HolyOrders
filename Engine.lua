@@ -6,7 +6,7 @@ local HO = HolyOrders
 local Engine = {}
 HO.Engine = Engine
 
-local EXPIRING_SOON = 120 -- seconds left that count as "needs a refresh"
+local EXPIRING_SOON = 300 -- seconds left that count as "needs a refresh"
 local MAX_BUFFS = 40
 local SALVATION = 4
 local FRESH_AGE = 120 -- force mode: buffs older than this are re-cast

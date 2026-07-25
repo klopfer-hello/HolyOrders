@@ -1,0 +1,29 @@
+{
+	"runtime.version": "Lua 5.1",
+	"diagnostics.globals": [
+		"HolyOrders",
+		"HolyOrdersDB",
+		"UnitBuff",
+		"GetSpellInfo",
+		"GetNumSpellTabs",
+		"GetSpellTabInfo",
+		"GetSpellBookItemName",
+		"BOOKTYPE_SPELL",
+		"IsSpellInRange",
+		"GetNumTalentTabs",
+		"GetNumTalents",
+		"GetTalentInfo",
+		"InterfaceOptionsFrame_OpenToCategory",
+		"UNKNOWNOBJECT",
+		"GetMinimapShape"
+	],
+	"diagnostics.disable": [
+		"lowercase-global",
+		"missing-parameter",
+		"param-type-mismatch",
+		"cast-local-type"
+	],
+	"workspace.ignoreDir": [
+		"Libs"
+	]
+}

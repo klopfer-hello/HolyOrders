@@ -209,14 +209,13 @@ function Plan.ToggleTank(name)
 		return nil
 	end
 	local plan = Plan.Active()
-	local flagged
-	if plan.tanks[name] then
-		plan.tanks[name] = nil
-		flagged = false
-	else
-		plan.tanks[name] = true
-		flagged = true
-	end
+	-- flip the EFFECTIVE state and store it explicitly: toggling off someone
+	-- who is tank-by-role-icon or tank-by-spec records `false`, which
+	-- overrides those derived sources (otherwise such a tank could never be
+	-- unmarked at all)
+	local entry = HO.Roster.byName and HO.Roster.byName[name]
+	local flagged = not Plan.IsTank(name, entry and entry.tankRole)
+	plan.tanks[name] = flagged
 	MarkDirty(plan)
 	if HO.Comm then
 		HO.Comm.OnTankToggled(name, flagged)
@@ -224,12 +223,14 @@ function Plan.ToggleTank(name)
 	return flagged
 end
 
--- is this character a tank for planning purposes? Manual flag, raid MAINTANK
--- role, local protection spec tag, or the synced spec overlay (so every client
--- computes the same tank set even when their inspect results diverge).
+-- is this character a tank for planning purposes? Explicit mark (either
+-- direction) wins; otherwise raid MAINTANK role, party tank role, local
+-- protection spec tag, or the synced spec overlay (so every client computes
+-- the same tank set even when their inspect results diverge).
 function Plan.IsTank(name, tankRole)
-	if name and Plan.Active().tanks[name] then
-		return true -- manual tank flag
+	local manual = name and Plan.Active().tanks[name]
+	if manual ~= nil then
+		return manual -- explicit mark: true = tank, false = never a tank
 	end
 	if tankRole then
 		return true -- raid MAINTANK role

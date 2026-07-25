@@ -208,6 +208,13 @@ function Comm.CanEdit(editor, owner)
 	if editor == owner then
 		return true
 	end
+	-- outside a raid (solo and 5-man parties) everyone may edit every row:
+	-- a party has no assist rank, and coordination among five people must
+	-- not hang on the lead or on per-owner consent flags. Raids keep the
+	-- strict rules below.
+	if not IsInRaid() then
+		return true
+	end
 	local entry = HO.Roster.byName[editor]
 	if entry and (entry.rank or 0) > 0 then
 		return true -- raid leader or assist
@@ -226,9 +233,12 @@ function Comm.CanBulk(editor)
 	return (entry and (entry.rank or 0) > 0) or not IsInGroup()
 end
 
--- sender-side mirror of the receiver's TANK gate: self, lead/assist, or solo
+-- sender-side mirror of the receiver's TANK gate: outside a raid (solo and
+-- 5-man parties) everyone may fix tank marks — there is no assist rank in a
+-- party and a wrong mark must not require the lead. In raids: self or
+-- lead/assist.
 function Comm.CanFlagTank(name)
-	if not IsInGroup() then
+	if not IsInRaid() then
 		return true
 	end
 	if name == me then
@@ -568,11 +578,13 @@ function Comm.SendPlanApply(override)
 		end
 	end
 	table.sort(owners)
-	-- prune tanks no longer in the roster before broadcasting
+	-- prune tanks no longer in the roster before broadcasting. Explicit
+	-- suppressions travel as "!name"; an old client applies that as a positive
+	-- mark for a name that matches nobody — harmless, pruned on its next apply
 	local tanks = {}
-	for name in pairs(plan.tanks) do
+	for name, flag in pairs(plan.tanks) do
 		if HO.Roster.byName[name] then
-			table.insert(tanks, name)
+			table.insert(tanks, flag and name or ("!" .. name))
 		else
 			plan.tanks[name] = nil
 		end
@@ -754,12 +766,15 @@ handlers["T"] = function(sender, payload)
 		return -- only flag members currently in the roster
 	end
 	local entry = HO.Roster.byName[sender]
-	local allowed = (sender == name) or (entry and (entry.rank or 0) > 0)
+	-- mirror of CanFlagTank: outside a raid every group member may fix marks
+	local allowed = (sender == name) or (entry and (entry.rank or 0) > 0) or not IsInRaid()
 	if not allowed then
 		return
 	end
 	local plan = HO.Plan.Active()
-	plan.tanks[name] = (flag == "1") and true or nil
+	-- store the mark explicitly in both directions: `false` suppresses a
+	-- role-icon or spec-derived tank (matches the sender's toggle semantics)
+	plan.tanks[name] = (flag == "1") and true or false
 	RefreshUI()
 end
 
@@ -810,7 +825,12 @@ handlers["PE"] = function(sender)
 	end
 	wipe(plan.tanks)
 	for _, name in ipairs(tanks) do
-		plan.tanks[name] = true
+		local suppressed = name:match("^!(.+)$")
+		if suppressed then
+			plan.tanks[suppressed] = false -- explicit "never a tank" mark
+		else
+			plan.tanks[name] = true
+		end
 	end
 	-- a remote bulk apply is a new clean baseline
 	plan.meta = plan.meta or {}

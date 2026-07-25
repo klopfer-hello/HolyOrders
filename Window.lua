@@ -178,7 +178,7 @@ end
 local function MayEdit(pally)
 	local editor = HO.FullName("player")
 	if HO.Comm and editor and not HO.Comm.CanEdit(editor, pally) then
-		HO.Print("no permission to edit " .. pally .. "'s assignments (need lead/assist or their open-edit)")
+		HO.Print("no permission to edit " .. pally .. "'s assignments (in a raid: lead/assist or their open-edit)")
 		return false
 	end
 	return true
@@ -862,7 +862,7 @@ function Window.Refresh()
 						mrow.label:SetScript("OnClick", function(_, mouseBtn)
 							if mouseBtn == "RightButton" then
 								if HO.Comm and not HO.Comm.CanFlagTank(entry.name) then
-									HO.Print(L["only lead/assist may flag others as tank"])
+									HO.Print(L["in a raid only lead/assist may flag others as tank"])
 									return
 								end
 								local flagged = HO.Plan.ToggleTank(entry.name)

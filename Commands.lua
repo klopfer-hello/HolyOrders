@@ -92,13 +92,17 @@ HO.commands["plan"] = function(rest)
 				HO.PrintLine(string.format("   override: %s buffs %s on %s", paladin, BlessingLabel(id), target))
 			end
 		end
-		local tanks = {}
-		for name in pairs(plan.tanks) do
-			table.insert(tanks, name)
+		local tanks, suppressed = {}, {}
+		for name, flag in pairs(plan.tanks) do
+			table.insert(flag and tanks or suppressed, name)
 		end
 		if #tanks > 0 then
 			table.sort(tanks)
 			HO.PrintLine("tanks: " .. table.concat(tanks, ", "))
+		end
+		if #suppressed > 0 then
+			table.sort(suppressed)
+			HO.PrintLine("explicitly NOT tanks: " .. table.concat(suppressed, ", "))
 		end
 	elseif sub == "save" then
 		local sig = HO.Plan.Save(arg)
@@ -590,7 +594,7 @@ HO.commands["tank"] = function(rest)
 		return
 	end
 	if HO.Comm and not HO.Comm.CanFlagTank(target) then
-		HO.Print("only lead/assist may flag others as tank")
+		HO.Print("in a raid only lead/assist may flag others as tank")
 		return
 	end
 	local isTank = HO.Plan.ToggleTank(target)

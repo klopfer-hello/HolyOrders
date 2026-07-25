@@ -46,6 +46,13 @@ local function AddEntry(unit, ownerEntry)
 		subgroup = ownerEntry and ownerEntry.subgroup or 1,
 		tankRole = false,
 	}
+	-- a pet out of visibility range reports no class; it is kept (display and
+	-- casting group it under its OWNER's class) and a rescan fills the class
+	-- in once the pet is visible — dropping it here made pets vanish from the
+	-- lists whenever the owner was far away during a rebuild
+	if entry.isPet and not entry.class then
+		needsRescan = true
+	end
 	if entry.name then
 		table.insert(Roster.units, entry)
 		if not entry.isPet then

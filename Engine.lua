@@ -219,7 +219,9 @@ function Engine.Update()
 	local pools = {} -- [classToken] = { {entry, blessingID, isOverride}, ... }
 	local classTanks = {} -- [classToken] = true when a tank is present
 	for _, entry in ipairs(HO.Roster.units) do
-		if entry.name and entry.class and entry.unit then
+		-- pets pass without an own class: an out-of-range pet reports none,
+		-- and everything below uses the OWNER's class for pets anyway
+		if entry.name and entry.unit and (entry.class or entry.isPet) then
 			local isTank = HO.Plan.IsTank(entry.name, entry.tankRole)
 			if isTank and not entry.isPet then
 				classTanks[entry.class] = true
@@ -232,32 +234,34 @@ function Engine.Update()
 				local ownerEntry = entry.owner and HO.Roster.byName[entry.owner]
 				poolClass = (ownerEntry and ownerEntry.class) or entry.class
 			end
-			-- display row for the fly-out: every member is listed (even with no
-			-- assigned blessing); hasBuff/inRange are filled below for pooled
-			-- members. This is purely for display and never gates a cast.
-			-- display-only: the member's top-ranked buff request (nil for pets,
-			-- which never send requests); never affects a cast
-			local reqID = TopRequest(entry.name)
-			local member = {
-				name = entry.name,
-				unit = entry.unit,
-				isPet = entry.isPet or nil,
-				owner = entry.owner,
-				blessingID = (blessingID and blessingID > 0) and blessingID or nil,
-				requestID = reqID,
-				-- does the member already HAVE the requested blessing, from ANY
-				-- paladin? (feeds the fly-out badge tint; per-paladin comparisons
-				-- would mislead when someone else fulfils the wish)
-				requestSatisfied = (reqID and HasBlessing(entry.unit, reqID)) or nil,
-			}
-			Engine.classMembers[poolClass] = Engine.classMembers[poolClass] or {}
-			table.insert(Engine.classMembers[poolClass], member)
-			if blessingID and blessingID > 0 then
-				if isOverride or entry.isPet or HO.Data.IsEligible(entry.class, blessingID, isTank) then
-					pools[poolClass] = pools[poolClass] or {}
-					-- keep the display row so the buff/range check below fills it in
-					table.insert(pools[poolClass], { entry = entry, blessingID = blessingID, isOverride = isOverride, member = member })
-				end
+			if poolClass then
+				-- display row for the fly-out: every member is listed (even with no
+				-- assigned blessing); hasBuff/inRange are filled below for pooled
+				-- members. This is purely for display and never gates a cast.
+				-- display-only: the member's top-ranked buff request (nil for pets,
+				-- which never send requests); never affects a cast
+				local reqID = TopRequest(entry.name)
+				local member = {
+					name = entry.name,
+					unit = entry.unit,
+					isPet = entry.isPet or nil,
+					owner = entry.owner,
+					blessingID = (blessingID and blessingID > 0) and blessingID or nil,
+					requestID = reqID,
+					-- does the member already HAVE the requested blessing, from ANY
+					-- paladin? (feeds the fly-out badge tint; per-paladin comparisons
+					-- would mislead when someone else fulfils the wish)
+					requestSatisfied = (reqID and HasBlessing(entry.unit, reqID)) or nil,
+				}
+				Engine.classMembers[poolClass] = Engine.classMembers[poolClass] or {}
+				table.insert(Engine.classMembers[poolClass], member)
+				if blessingID and blessingID > 0 then
+					if isOverride or entry.isPet or HO.Data.IsEligible(entry.class, blessingID, isTank) then
+						pools[poolClass] = pools[poolClass] or {}
+						-- keep the display row so the buff/range check below fills it in
+						table.insert(pools[poolClass], { entry = entry, blessingID = blessingID, isOverride = isOverride, member = member })
+					end
+			end
 			end
 		end
 	end

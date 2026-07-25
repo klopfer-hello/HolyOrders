@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-07-25
+
+Sync protocol stays v4 — compatible with 0.17.x–0.28.x. The relaxed party
+permissions apply fully once every client in the group runs this version.
+
+### Added
+- **Explicit "not a tank" mark**: unmarking someone who counts as tank via
+  the party role icon or their spec now records a suppression that overrides
+  those sources — previously such a tank could not be unmarked at all (e.g.
+  a tank warrior whose Salvation assignment never showed on the cast bar).
+  Syncs live, survives plan snapshots, and `/ho plan show` lists explicit
+  non-tanks separately.
+
+### Changed
+- **5-man parties are coordination-friendly**: outside raids every group
+  member may flag tanks and edit any paladin's assignments — no lead
+  required. Raids keep the strict rules (lead/assist or the owner's
+  open-edit).
+- **Paladins without HolyOrders are freely plannable**: their rows have no
+  consent flag to honor, and a receiving legacy client enforces its own
+  acceptance rule anyway (lead/assist or its free-assignment option) — so
+  the local gate no longer blocks the coordinator scenario.
+- Switching a cell's blessing **keeps its cast mode**: a deliberately chosen
+  always-greater/always-normal no longer resets to auto when you pick
+  another blessing.
+
 ## [0.28.0] - 2026-07-25
 
 Sync protocol stays v4 — compatible with 0.17.x–0.27.x.

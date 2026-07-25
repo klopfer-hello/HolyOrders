@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-07-25
+
+Sync protocol stays v4 — compatible with 0.17.x–0.27.x.
+
+### Added
+- The **legacy-addon bridge now pushes assignments to other paladins' legacy
+  clients**, not just the sender's own row. Set up the whole plan in
+  HolyOrders — from any class, paladin or not — and legacy paladins receive
+  their rows (including per-member overrides). Pushed rows are accepted when
+  you are raid lead/assist or the receiving client has its free-assignment
+  option enabled; after that the receiver re-broadcasts them natively.
+  `/ho interop` lists the exact push lines and the acceptance rule.
+
 ## [0.27.0] - 2026-07-24
 
 Sync protocol stays v4 — compatible with 0.17.x–0.26.x. The reload-recovery

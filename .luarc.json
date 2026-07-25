@@ -21,7 +21,8 @@
 		"lowercase-global",
 		"missing-parameter",
 		"param-type-mismatch",
-		"cast-local-type"
+		"cast-local-type",
+		"deprecated"
 	],
 	"workspace.ignoreDir": [
 		"Libs"

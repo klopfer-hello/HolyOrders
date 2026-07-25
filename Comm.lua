@@ -222,10 +222,19 @@ function Comm.CanEdit(editor, owner)
 	if owner == me then
 		return HO.db.options.openEdit or false
 	end
+	local peer = Comm.peers[owner]
+	if not peer then
+		-- the owner runs no HolyOrders (legacy blessing addon, or none at
+		-- all): there is no consent flag to honor and no client of ours to
+		-- convince. Their row is a local plan plus, at most, a legacy push —
+		-- and the LEGACY client enforces its own acceptance rule (lead/assist
+		-- or its free-assignment option), so gating here protects nothing
+		-- and only blocks the coordinator scenario.
+		return true
+	end
 	-- honor a peer's openEdit only while that peer is still in the group roster
 	-- (a leaver's stale permission must not survive)
-	local peer = Comm.peers[owner]
-	return (peer and peer.openEdit and HO.Roster.byName[owner] and true) or false
+	return (peer.openEdit and HO.Roster.byName[owner] and true) or false
 end
 
 function Comm.CanBulk(editor)

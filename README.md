@@ -52,6 +52,12 @@ A fully independent, from-scratch implementation.
   addons can register their own skins through a small adapter API.
 - **German localization** in addition to English.
 
+## Screenshots
+
+| Assignment window | Cast bar | Fly-out with buff timers |
+|---|---|---|
+| ![Assignment window](media/screenshot_assignements.png) | ![Cast bar](media/screenshot_buttonbar.png) | ![Fly-out](media/screenshot_flyout.png) |
+
 ## Usage
 
 - `/ho` — open the assignment window

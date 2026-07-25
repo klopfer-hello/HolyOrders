@@ -101,6 +101,12 @@ function Plan.SetClassAssignment(paladin, classToken, blessingID, mode)
 	if blessingID == 0 then
 		plan.class[paladin][classToken] = nil
 	else
+		if mode == nil then
+			-- a plain blessing switch keeps the cell's cast mode: a deliberately
+			-- chosen "always greater/normal" must survive picking another blessing
+			local existing = plan.class[paladin][classToken]
+			mode = existing and existing.mode
+		end
 		if not VALID_MODES[mode or "auto"] then
 			mode = "auto"
 		end

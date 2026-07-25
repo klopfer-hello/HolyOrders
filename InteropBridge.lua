@@ -1,9 +1,13 @@
 -- HolyOrders — legacy blessing-addon bridge (EMIT ONLY)
--- Lets raiders still running an older, third-party blessing addon see this
--- paladin's plan. We broadcast our own assignments in that addon's addon-message
--- wire format; we never read its state (the only inbound message we act on is a
--- pull request, and only to re-emit). Off by default, behind
--- HO.db.options.legacyBroadcast.
+-- Lets raiders still running an older, third-party blessing addon follow the
+-- plan held here. Two emissions in that addon's addon-message wire format:
+-- our own paladin row (SELF), and a PUSH of every other held paladin row
+-- (PASSIGN + NASSIGN) so a coordinator on ANY class can drive legacy paladins.
+-- Legacy clients apply a pushed foreign row only when we are raid lead/assist
+-- or they enabled their free-assignment option; once applied, the target's own
+-- client re-broadcasts the row natively. We never read legacy state (the only
+-- inbound message we act on is a pull request, and only to re-emit). Off by
+-- default, behind HO.db.options.legacyBroadcast.
 --
 -- Clean-room: the wire format is a functional interface reproduced from a written
 -- protocol note only (kept locally in docs/, untracked). No third-party code,
@@ -85,15 +89,14 @@ local function EncodeCaps()
 	return caps
 end
 
--- our class grid as the legacy 9-char string: per class index (BCC order) either
--- "n" (no assignment / explicit-none) or the legacy blessing number
-local function EncodeGrid()
-	local me = HO.FullName("player")
-	local myClass = (me and HO.Plan.Active().class[me]) or {}
+-- a paladin's class grid as the legacy 9-char string: per class index (BCC
+-- order) either "n" (no assignment / explicit-none) or the legacy blessing number
+local function EncodeGrid(owner)
+	local rows = (owner and HO.Plan.Active().class[owner]) or {}
 	local grid = ""
 	for i = 1, LEGACY_NUM_CLASSES do
 		local token = LEGACY_INDEX_CLASS[i]
-		local assign = token and myClass[token]
+		local assign = token and rows[token]
 		if assign and assign.id and HO_TO_LEGACY[assign.id] then
 			grid = grid .. tostring(HO_TO_LEGACY[assign.id])
 		else
@@ -103,20 +106,19 @@ local function EncodeGrid()
 	return grid
 end
 
--- per-target overrides as legacy override entries: "<player> <class_id> <target>
--- <blessing_id>", sorted by target for a deterministic wire
-local function OverrideEntries()
-	local me = HO.FullName("player")
-	local mine = (me and HO.Plan.Active().player[me]) or {}
+-- a paladin's per-target overrides as legacy override entries: "<player>
+-- <class_id> <target> <blessing_id>", sorted by target for a deterministic wire
+local function OverrideEntries(owner)
+	local theirs = (owner and HO.Plan.Active().player[owner]) or {}
 	local names = {}
-	for targetName in pairs(mine) do
+	for targetName in pairs(theirs) do
 		names[#names + 1] = targetName
 	end
 	table.sort(names)
-	local player = ShortName(me) or "?"
+	local player = ShortName(owner) or "?"
 	local entries = {}
 	for _, targetName in ipairs(names) do
-		local legacyNum = HO_TO_LEGACY[mine[targetName]] or 0
+		local legacyNum = HO_TO_LEGACY[theirs[targetName]] or 0
 		local rosterEntry = HO.Roster.byName and HO.Roster.byName[targetName]
 		local classIdx = (rosterEntry and rosterEntry.class and LEGACY_CLASS_INDEX[rosterEntry.class]) or 0
 		entries[#entries + 1] = player .. " " .. classIdx .. " " .. (ShortName(targetName) or "?") .. " " .. legacyNum
@@ -124,21 +126,50 @@ local function OverrideEntries()
 	return entries
 end
 
+-- every paladin whose row we hold and who is still in the roster, sorted; the
+-- own row is listed too (SELF carries it for paladin senders, the push covers
+-- the coordinator-on-another-class case where there is no own row anyway)
+local function HeldOwners()
+	local owners = {}
+	for owner in pairs(HO.Plan.Active().class) do
+		if HO.Roster.byName and HO.Roster.byName[owner] then
+			owners[#owners + 1] = owner
+		end
+	end
+	table.sort(owners)
+	return owners
+end
+
 -- broadcast -------------------------------------------------------------------
 
--- send SELF (+ NASSIGN chunks) on the group channel, or whispered to `target`
--- when answering a direct pull request. Paladins only — SELF describes the
--- sender's own paladin row.
+-- send our own row as SELF (paladins only — SELF describes the sender's own
+-- paladin row), then PUSH every other held paladin row as PASSIGN, plus all
+-- per-target overrides as NASSIGN chunks. Receiving legacy clients apply a
+-- pushed foreign row only when we are raid lead/assist or they have their
+-- free-assignment option enabled; pushing works from any class, so a
+-- non-paladin coordinator can drive legacy paladins too. Once applied, the
+-- target's own legacy client re-broadcasts the row natively as its SELF.
 local function Broadcast(target)
-	if not enabled or not IsPaladin() then
+	if not enabled then
 		return
 	end
 	local channel = target and "WHISPER" or GroupChannel()
 	if not channel then
 		return -- solo: nobody to tell
 	end
-	Emit("SELF " .. EncodeCaps() .. "@" .. EncodeGrid(), channel, target)
-	local entries = OverrideEntries()
+	local me = HO.FullName("player")
+	if IsPaladin() then
+		Emit("SELF " .. EncodeCaps() .. "@" .. EncodeGrid(me), channel, target)
+	end
+	local entries = {}
+	for _, owner in ipairs(HeldOwners()) do
+		if owner ~= me then
+			Emit("PASSIGN " .. (ShortName(owner) or "?") .. "@" .. EncodeGrid(owner), channel, target)
+		end
+		for _, e in ipairs(OverrideEntries(owner)) do
+			entries[#entries + 1] = e
+		end
+	end
 	for i = 1, #entries, NASSIGN_MAX do
 		local last = math.min(i + NASSIGN_MAX - 1, #entries)
 		Emit("NASSIGN " .. table.concat(entries, "@", i, last), channel, target)
@@ -213,9 +244,10 @@ function Interop.SetEnabled(on)
 	end
 end
 
--- a local plan edit changed a row: rebroadcast (debounced) if it was ours
+-- a local plan edit changed any held row: rebroadcast (debounced) — foreign
+-- rows are pushed to legacy clients too, so every change is wire-relevant
 function Interop.OnLocalPlanChanged(paladin)
-	if enabled and paladin == HO.FullName("player") then
+	if enabled and paladin then
 		ScheduleBroadcast()
 	end
 end
@@ -223,19 +255,30 @@ end
 -- diagnostics: status flags plus the exact strings we would emit. For verifying
 -- the bridge against a live legacy client without reading its code.
 function Interop.Status()
+	local me = HO.FullName("player")
+	local pushes, overrides = {}, {}
+	for _, owner in ipairs(HeldOwners()) do
+		if owner ~= me then
+			pushes[#pushes + 1] = "PASSIGN " .. (ShortName(owner) or "?") .. "@" .. EncodeGrid(owner)
+		end
+		for _, e in ipairs(OverrideEntries(owner)) do
+			overrides[#overrides + 1] = e
+		end
+	end
 	return {
 		enabled = enabled,
 		paladin = IsPaladin(),
 		channel = GroupChannel(),
-		selfMsg = "SELF " .. EncodeCaps() .. "@" .. EncodeGrid(),
-		overrides = OverrideEntries(),
+		selfMsg = IsPaladin() and ("SELF " .. EncodeCaps() .. "@" .. EncodeGrid(me)) or nil,
+		pushes = pushes,
+		overrides = overrides,
 	}
 end
 
--- force an immediate broadcast (bypasses the debounce). Returns false if it could
--- not send: disabled, not a paladin, or solo.
+-- force an immediate broadcast (bypasses the debounce). Returns false if it
+-- could not send: disabled or solo.
 function Interop.ForceBroadcast()
-	if not enabled or not IsPaladin() or not GroupChannel() then
+	if not enabled or not GroupChannel() then
 		return false
 	end
 	Broadcast()

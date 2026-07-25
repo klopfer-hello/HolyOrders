@@ -707,14 +707,22 @@ HO.commands["interop"] = function()
 	HO.Print("legacy broadcast: " .. (s.enabled and "|cff40ff40ON|r" or "|cffff4040OFF|r (enable it in Options)")
 		.. " — paladin: " .. (s.paladin and "yes" or "no")
 		.. " — channel: " .. (s.channel or "|cffff4040solo — nothing sends|r"))
-	HO.Print("would emit: " .. s.selfMsg)
+	if s.selfMsg then
+		HO.Print("would emit: " .. s.selfMsg)
+	end
+	for _, p in ipairs(s.pushes) do
+		HO.Print("would push: " .. p)
+	end
 	for _, e in ipairs(s.overrides) do
 		HO.Print("            NASSIGN " .. e)
+	end
+	if #s.pushes > 0 then
+		HO.Print("note: legacy clients accept pushed rows only from the lead/assist, or with their free-assignment option on")
 	end
 	if HO.Interop.ForceBroadcast() then
 		HO.Print("|cff40ff40re-broadcast sent to the group|r")
 	else
-		HO.Print("not sending — needs: option ON, you are a paladin, and you are in a group")
+		HO.Print("not sending — needs: option ON and you are in a group")
 	end
 	HO.Print("note: a legacy client on your OWN character ignores your own broadcasts — verify from a SECOND character running it")
 end

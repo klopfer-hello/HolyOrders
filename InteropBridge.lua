@@ -149,22 +149,30 @@ end
 -- free-assignment option enabled; pushing works from any class, so a
 -- non-paladin coordinator can drive legacy paladins too. Once applied, the
 -- target's own legacy client re-broadcasts the row natively as its SELF.
-local function Broadcast(target)
+-- the last group-channel emission, for content dedup: every received message
+-- makes a legacy client rebuild its whole layout, so re-sending an unchanged
+-- plan on roster churn turns their UI into a strobe. Whispered replies and
+-- explicit pull requests bypass the dedup (the requester may hold nothing).
+local lastGroupWire = nil
+
+local function Broadcast(target, force)
 	if not enabled then
 		return
 	end
 	local channel = target and "WHISPER" or GroupChannel()
 	if not channel then
-		return -- solo: nobody to tell
+		lastGroupWire = nil -- solo: nobody to tell; a future group starts fresh
+		return
 	end
 	local me = HO.FullName("player")
+	local parts = {}
 	if IsPaladin() then
-		Emit("SELF " .. EncodeCaps() .. "@" .. EncodeGrid(me), channel, target)
+		parts[#parts + 1] = "SELF " .. EncodeCaps() .. "@" .. EncodeGrid(me)
 	end
 	local entries = {}
 	for _, owner in ipairs(HeldOwners()) do
 		if owner ~= me then
-			Emit("PASSIGN " .. (ShortName(owner) or "?") .. "@" .. EncodeGrid(owner), channel, target)
+			parts[#parts + 1] = "PASSIGN " .. (ShortName(owner) or "?") .. "@" .. EncodeGrid(owner)
 		end
 		for _, e in ipairs(OverrideEntries(owner)) do
 			entries[#entries + 1] = e
@@ -172,20 +180,35 @@ local function Broadcast(target)
 	end
 	for i = 1, #entries, NASSIGN_MAX do
 		local last = math.min(i + NASSIGN_MAX - 1, #entries)
-		Emit("NASSIGN " .. table.concat(entries, "@", i, last), channel, target)
+		parts[#parts + 1] = "NASSIGN " .. table.concat(entries, "@", i, last)
+	end
+	if not target then
+		local wire = channel .. "\n" .. table.concat(parts, "\n")
+		if not force and wire == lastGroupWire then
+			return -- nothing changed: spare every legacy client a layout rebuild
+		end
+		lastGroupWire = wire
+	end
+	for _, msg in ipairs(parts) do
+		Emit(msg, channel, target)
 	end
 end
 
-local function ScheduleBroadcast()
+local pendingForce = false
+
+local function ScheduleBroadcast(force)
 	if not enabled then
 		return
 	end
+	pendingForce = pendingForce or force or false
 	if broadcastTimer then
 		broadcastTimer:Cancel()
 	end
 	broadcastTimer = C_Timer.NewTimer(BROADCAST_DELAY, function()
 		broadcastTimer = nil
-		Broadcast()
+		local f = pendingForce
+		pendingForce = false
+		Broadcast(nil, f)
 	end)
 end
 
@@ -205,11 +228,12 @@ local function OnAddonMessage(prefix, message, channel, senderFull)
 		HO.Log("interop", "rx " .. (ShortName(senderFull) or "?") .. " " .. tostring(message):sub(1, 200))
 	end
 	if message:match("^(%S+)") == "REQ" then
-		-- answer a whispered request privately, a broadcast request to the group
+		-- answer a whispered request privately, a broadcast request to the
+		-- group; a pull always re-emits (the requester may hold nothing yet)
 		if channel == "WHISPER" and senderFull then
 			Broadcast(senderFull)
 		else
-			ScheduleBroadcast()
+			ScheduleBroadcast(true)
 		end
 	end
 end
@@ -281,7 +305,7 @@ function Interop.ForceBroadcast()
 	if not enabled or not GroupChannel() then
 		return false
 	end
-	Broadcast()
+	Broadcast(nil, true) -- diagnostics: always send, bypassing the dedup
 	return true
 end
 

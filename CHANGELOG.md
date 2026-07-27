@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.1] - 2026-07-25
+
+Sync protocol stays v4 — compatible with 0.17.x–0.29.x.
+
+### Fixed
+- **Legacy clients no longer flicker** ("disco mode"): the bridge re-emitted
+  the full plan on every roster event, and a legacy client rebuilds its whole
+  layout per received message. Group broadcasts are now skipped entirely when
+  nothing changed; pull requests and whispered replies still always answer.
+- **Pets no longer vanish from the lists** when their owner is far away
+  during a roster rebuild: a pet outside visibility range reports no class,
+  which used to drop it from the window, fly-out and cast pool until some
+  unrelated roster event. Pets now stay listed and the roster fills the
+  class in once the pet is visible.
+
 ## [0.29.0] - 2026-07-25
 
 Sync protocol stays v4 — compatible with 0.17.x–0.28.x. The relaxed party

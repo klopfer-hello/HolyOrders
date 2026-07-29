@@ -656,9 +656,10 @@ function Window.Create()
 		local sig = HO.Plan.Save()
 		HO.Print(sig and ("plan saved for roster: " .. sig) or "cannot save: no paladins in roster")
 	end, L["Save the current plan for this paladin roster"])
-	win.salvBtn = HeaderButton("No Salv", -222, function()
+	win.salvBtn = HeaderButton(L["No-Salv OFF"], -222, function()
 		HO.commands["nosalv"]("")
 	end, L["Encounter toggle: swap Salvation for substitutes, click again to restore the previous plan (lead/assist)"])
+	win.salvBtn:SetSize(76, 20) -- state label is wider than the other buttons'
 	-- place the expand/collapse-all toggle just left of the No Salv button
 	win.expandBtn:SetPoint("RIGHT", win.salvBtn, "LEFT", -6, 0)
 
@@ -712,8 +713,10 @@ function Window.Refresh()
 	end
 
 	if win.salvBtn then
+		-- English labels show the MODE state (No-Salv ON = mode running); the
+		-- German localization deliberately uses action labels instead
 		local active = HO.Plan.NoSalvationActive() or HO.db.noSalvBy
-		win.salvBtn:SetText(active and "|cffff4040Salv OFF|r" or "No Salv")
+		win.salvBtn:SetText(active and ("|cffff4040" .. L["No-Salv ON"] .. "|r") or L["No-Salv OFF"])
 	end
 	-- four short plain-language lines: icon clicks, name clicks (spec/tank),
 	-- then what the three cast-mode letters on the icons mean

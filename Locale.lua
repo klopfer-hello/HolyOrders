@@ -67,6 +67,10 @@ L["Run the deterministic auto-planner"] = "Deterministischen Auto-Planer ausfüh
 L["Force rebuff: refresh everything before the pull"] = "Zwangs-Rebuff: vor dem Pull alles auffrischen"
 L["Save the current plan for this paladin roster"] = "Aktuellen Plan für diese Paladin-Besetzung speichern"
 L["Encounter toggle: swap Salvation for substitutes, click again to restore the previous plan (lead/assist)"] = "Encounter-Schalter: Rettung durch Ersatz-Segen ersetzen; erneut klicken stellt den vorherigen Plan wieder her (Leiter/Assistent)"
+-- the button label: English shows the mode state, German uses action labels
+-- ("Salv raus" = click removes Salvation, "Salv rein" = click restores it)
+L["No-Salv OFF"] = "Salv raus"
+L["No-Salv ON"] = "Salv rein"
 -- window legend, plain language ("Nüchtern & knapp")
 L["Click an icon = pick a blessing · right-click = remove · class name = show members"] = "Icon anklicken = Segen wählen · Rechtsklick = entfernen · Klassenname = Mitglieder zeigen"
 L["Click a member's name = change their spec/role · right-click the name = mark as tank"] = "Name anklicken = Skillung/Rolle wechseln · Rechtsklick auf den Namen = als Tank markieren"

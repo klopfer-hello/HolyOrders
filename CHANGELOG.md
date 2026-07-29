@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.2] - 2026-07-27
+
+Sync protocol stays v4 — compatible with 0.17.x–0.29.x.
+
+### Fixed
+- **No-Salvation mode reverts reliably now.** The restore is broadcast by
+  whoever enabled the mode — and if that person had lost lead/assist in the
+  meantime (a mid-raid lead swap was enough), every client silently discarded
+  it: the mode ended but the swapped plan stuck. The restore is now accepted
+  on a lead-sanctioned revert regardless of the holder's current rank.
+- Running **Auto while no-Salvation mode is active** is refused with a clear
+  message — it used to re-assign Salvation mid-encounter and desync the
+  saved pre-mode plan.
+- No-Salvation mode ends automatically when you leave the group: the enabler
+  gets their plan restored locally, and a leftover snapshot can no longer
+  block re-enabling with "already active" in a later session.
+
+### Changed
+- The in-game update hint links to the download site instead of the retired
+  GitHub releases page.
+
 ## [0.29.1] - 2026-07-25
 
 Sync protocol stays v4 — compatible with 0.17.x–0.29.x.

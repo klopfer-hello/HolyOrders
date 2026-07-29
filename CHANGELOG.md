@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-07-29
+
+Sync protocol stays v4 — compatible with 0.17.x–0.29.x.
+
+### Changed
+- The no-Salvation button now states the **mode** unambiguously instead of
+  the misreadable "Salv OFF": English shows the mode state (`No-Salv OFF` /
+  red `No-Salv ON`), German uses action labels (`Salv raus` / `Salv rein` —
+  what clicking does).
+
 ## [0.29.2] - 2026-07-27
 
 Sync protocol stays v4 — compatible with 0.17.x–0.29.x.

@@ -37,7 +37,7 @@ local me -- own full name, set on login
 -- atomically at PE): two leads broadcasting at once must not clobber each other
 local planBuffers = {}
 
-local UPDATE_URL = "https://github.com/klopfer-hello/HolyOrders/releases"
+local UPDATE_URL = "https://www.curseforge.com/wow/addons/holyorders"
 
 -- "X.Y.Z" to a comparable number; nil for anything malformed
 local function ParseVersion(v)

@@ -537,6 +537,11 @@ local function RunCore(pallys)
 end
 
 function Planner.Run()
+	-- a re-plan would assign Salvation again and desync the holder's snapshot:
+	-- the encounter mode must be reverted before auto is allowed to run
+	if HO.Plan.NoSalvationActive() or (HO.db and HO.db.noSalvBy) then
+		return false, "no-Salvation mode is active — revert it first (No Salv button or /ho nosalv)"
+	end
 	local pallys = HO.Roster.Paladins()
 	if #pallys == 0 then
 		return false, "no paladins in the roster"

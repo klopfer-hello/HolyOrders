@@ -631,6 +631,15 @@ end
 
 local handlers = {}
 
+-- a lead-sanctioned no-Salvation revert makes the SNAPSHOT HOLDER broadcast
+-- the restored plan — and the holder may have lost lead/assist since enabling
+-- the mode. Receivers therefore accept the holder's next plan apply for a
+-- short window after the lead's end-mode message; without this the restore
+-- was silently discarded and the swapped plan stuck.
+local SALV_REVERT_WINDOW = 10 -- seconds
+local salvRevertFrom = nil
+local salvRevertUntil = 0
+
 handlers["H"] = function(sender, payload)
 	local version, openEdit, caps = strsplit(";", payload)
 	local peer = Comm.peers[sender] or {}
@@ -819,10 +828,15 @@ handlers["PE"] = function(sender)
 	local rows, tanks = buf.rows, buf.tanks
 	planBuffers[sender] = nil
 	-- re-check bulk permission at apply time: a demotion mid-stream discards the
-	-- whole buffer rather than applying a snapshot the sender may no longer own
-	if not Comm.CanBulk(sender) then
+	-- whole buffer rather than applying a snapshot the sender may no longer own.
+	-- Exception: the no-Salvation holder answering a lead's revert (see above).
+	local sanctioned = (sender == salvRevertFrom) and GetTime() < salvRevertUntil
+	if not Comm.CanBulk(sender) and not sanctioned then
 		HO.Log("comm", "plan apply from " .. sender .. " discarded (no bulk permission at PE)")
 		return
+	end
+	if sanctioned then
+		salvRevertFrom = nil
 	end
 	local plan = HO.Plan.Active()
 	local applied = 0
@@ -931,6 +945,9 @@ handlers["NS"] = function(sender, payload)
 		HO.db.noSalvBy = sender
 		HO.Announce("no-Salvation mode enabled by " .. sender)
 	else
+		-- open the acceptance window for the holder's restore snapshot
+		salvRevertFrom = HO.db.noSalvBy or sender
+		salvRevertUntil = GetTime() + SALV_REVERT_WINDOW
 		HO.db.noSalvBy = nil
 		if HO.Plan.NoSalvationActive() then
 			-- we hold the snapshot; a lead asked for the revert — restore
@@ -1307,6 +1324,22 @@ HO.RegisterEvent("PLAYER_LOGIN", function()
 	HO.Roster.OnChanged(function()
 		PruneDeparted()
 		ReplayPending()
+		-- the no-Salvation encounter mode is group-scoped: leaving the group
+		-- ends it. The snapshot holder restores their own plan locally (solo,
+		-- nothing to send); everyone else clears the synced flag. This also
+		-- heals an orphaned snapshot that would otherwise block re-enabling
+		-- ("already active") in the next session.
+		if not IsInGroup() and HO.db then
+			if HO.Plan.NoSalvationActive() then
+				HO.Plan.SetNoSalvation(false)
+				HO.Announce("no-Salvation mode ended (left the group) — plan restored")
+				RefreshUI()
+			end
+			if HO.db.noSalvBy then
+				HO.db.noSalvBy = nil
+				RefreshUI()
+			end
+		end
 		-- greet whenever the paladin composition changes; non-paladin
 		-- clients listen but never announce themselves as paladins
 		local sig = table.concat(HO.Roster.Paladins(), ";")

@@ -29,9 +29,26 @@ jobs:
         run: |
           mkdir -p dist/HolyOrders
           cp *.lua *.toc LICENSE README.md CHANGELOG.md dist/HolyOrders/
-          cp -r Icons dist/HolyOrders/Icons
+          cp -r Icons Skins Libs dist/HolyOrders/
           cd dist
           zip -r "HolyOrders-v${{ steps.version.outputs.version }}.zip" HolyOrders
+
+      # every path the TOC loads must exist in the package — a new folder that
+      # is not copied above must fail the build, not ship a broken addon
+      - name: Verify package against TOC load list
+        run: |
+          cd dist/HolyOrders
+          fail=0
+          while IFS= read -r line; do
+            line="${line%$'\r'}"
+            case "$line" in ''|'#'*) continue ;; esac
+            f="${line//\\//}"
+            if [ ! -f "$f" ]; then
+              echo "MISSING from package: $f" >&2
+              fail=1
+            fi
+          done < HolyOrders.toc
+          exit $fail
 
       - name: Extract changelog section
         run: |

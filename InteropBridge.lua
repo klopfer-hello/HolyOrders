@@ -21,6 +21,7 @@ local WIRE_PREFIX = "PLPWR" -- the legacy addon's registered addon-message prefi
 local BROADCAST_DELAY = 1.5 -- coalesce a burst of plan edits into one broadcast
 local NASSIGN_MAX = 5 -- the legacy format packs at most 5 override entries per message
 local LEGACY_NUM_CLASSES = 9 -- max classes on the BCC branch of the legacy addon
+local LEGACY_NUM_AURAS = 8 -- aura numbering on the BCC branch is identical to ours (verified via spell ids)
 
 -- HolyOrders blessing id -> legacy blessing number. The orders are IDENTICAL
 -- (1 Wisdom, 2 Might, 3 Kings, 4 Salvation, 5 Light, 6 Sanctuary) — verified
@@ -130,6 +131,25 @@ local function OverrideEntries(owner)
 	return entries
 end
 
+-- our aura capabilities as the legacy per-slot rank/talent hex pairs ("nn"
+-- unknown). We track no aura ranks (rank is just level), so known auras emit
+-- rank 1 talent 0 — the receiver only uses this to populate its aura picker.
+local function EncodeAuraCaps()
+	local caps = ""
+	for i = 1, LEGACY_NUM_AURAS do
+		local aura = HO.Data.auras[i]
+		caps = caps .. ((aura and aura.known) and "10" or "nn")
+	end
+	return caps
+end
+
+-- a paladin's assigned aura as the legacy number (identical order); 0 = none
+local function AuraNumber(owner)
+	local plan = HO.Plan.Active()
+	local id = plan.aura and plan.aura[owner]
+	return (id and HO.Data.auras[id] and id) or 0
+end
+
 -- every paladin whose row we hold and who is still in the roster, sorted; the
 -- own row is listed too (SELF carries it for paladin senders, the push covers
 -- the coordinator-on-another-class case where there is no own row anyway)
@@ -172,11 +192,20 @@ local function Broadcast(target, force)
 	local parts = {}
 	if IsPaladin() then
 		parts[#parts + 1] = "SELF " .. EncodeCaps() .. "@" .. EncodeGrid(me)
+		-- own aura capabilities and assignment travel like the row does
+		parts[#parts + 1] = "ASELF " .. EncodeAuraCaps() .. "@" .. AuraNumber(me)
 	end
 	local entries = {}
 	for _, owner in ipairs(HeldOwners()) do
 		if owner ~= me then
 			parts[#parts + 1] = "PASSIGN " .. (ShortName(owner) or "?") .. "@" .. EncodeGrid(owner)
+			-- aura pushes share the row-push acceptance rule (lead/assist or
+			-- their free-assignment); only recorded auras are pushed — never a
+			-- zero that would strip a choice they made themselves
+			local auraNum = AuraNumber(owner)
+			if auraNum > 0 then
+				parts[#parts + 1] = "AASSIGN " .. (ShortName(owner) or "?") .. " " .. auraNum
+			end
 		end
 		for _, e in ipairs(OverrideEntries(owner)) do
 			entries[#entries + 1] = e

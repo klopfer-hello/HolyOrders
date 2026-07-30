@@ -260,13 +260,31 @@ local function OnAddonMessage(prefix, message, channel, senderFull)
 	if HO.db and HO.db.options.trace then
 		HO.Log("interop", "rx " .. (ShortName(senderFull) or "?") .. " " .. tostring(message):sub(1, 200))
 	end
-	if message:match("^(%S+)") == "REQ" then
+	local kind = message:match("^(%S+)")
+	if kind == "REQ" then
 		-- answer a whispered request privately, a broadcast request to the
 		-- group; a pull always re-emits (the requester may hold nothing yet)
 		if channel == "WHISPER" and senderFull then
 			Broadcast(senderFull)
 		else
 			ScheduleBroadcast(true)
+		end
+	elseif kind == "SELF" then
+		-- a paladin whose row we hold announced his own row: re-push ours,
+		-- forced past the dedup. A legacy client that rejected or lost our
+		-- push announces its own (often empty) row, which just overwrote our
+		-- assignments on every receiver — staying silent because OUR wire is
+		-- unchanged would leave the plan dead until an unrelated local edit.
+		-- Debounced, and no loop: the legacy client does not answer a push
+		-- with another announcement.
+		local senderShort = ShortName(senderFull)
+		if senderShort then
+			for _, owner in ipairs(HeldOwners()) do
+				if ShortName(owner) == senderShort then
+					ScheduleBroadcast(true)
+					break
+				end
+			end
 		end
 	end
 end

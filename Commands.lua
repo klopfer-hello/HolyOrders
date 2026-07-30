@@ -482,6 +482,43 @@ HO.commands["getlog"] = function(rest)
 end
 
 -- encounter toggle: swap Salvation out, revert afterwards
+-- who buffs which pet? Shows the deterministic split per pet, with each
+-- paladin's addon version — an off-script client (older addon, or none) is
+-- immediately identifiable, since every client computes its own pet duty.
+HO.commands["pets"] = function()
+	local found = false
+	local mine = HO.FullName("player")
+	for _, entry in ipairs(HO.Roster.units) do
+		if entry.isPet then
+			found = true
+			local included = HO.Engine.PetIncluded(entry)
+			HO.Print((entry.name or "?") .. " (pet of " .. (entry.owner or "?") .. ")"
+				.. (included and "" or " — excluded by the pet options"))
+			if included then
+				local split = HO.Engine.PetSplit(entry)
+				if #split == 0 then
+					HO.PrintLine("nobody covers the owner's class — no pet buffs")
+				end
+				for _, duty in ipairs(split) do
+					local ver
+					if duty.pally == mine then
+						ver = "you"
+					else
+						local peer = HO.Comm and HO.Comm.peers[duty.pally]
+						ver = peer and ("v" .. tostring(peer.version)) or "no HolyOrders — follows its own rules"
+					end
+					HO.PrintLine(duty.pally .. " > " .. (duty.id and BlessingLabel(duty.id) or "no pet duty") .. " (" .. ver .. ")")
+				end
+			end
+		end
+	end
+	if not found then
+		HO.Print("no pets in the roster")
+		return
+	end
+	HO.Print("note: the split needs every paladin on v0.27+ — older clients all cast the configured pet blessing")
+end
+
 -- pre-planning: /ho expect <name> toggles a paladin who has not joined yet;
 -- their window column appears immediately and can be assigned like any other
 HO.commands["expect"] = function(rest)
@@ -783,6 +820,7 @@ local DESC = {
 	rebuff = "toggle pre-pull force rebuff",
 	nosalv = "toggle no-Salvation encounter mode",
 	expect = "pre-plan a paladin who has not joined yet",
+	pets = "show who buffs which pet, with versions",
 	plan = "manage stored roster plans",
 	skin = "switch the UI skin",
 	assign = "set a class blessing assignment",

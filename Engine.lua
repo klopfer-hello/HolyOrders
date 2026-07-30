@@ -67,6 +67,51 @@ local function PetIncluded(entry)
 end
 Engine.PetIncluded = PetIncluded
 
+-- the deterministic pet-blessing split: every paladin covering the pet
+-- OWNER's class takes one slot of a ranked list (the configured pet blessing,
+-- then Kings, then Might — and Wisdom on pets that actually run on mana), so
+-- several paladins stack blessings instead of all duplicating the same one.
+-- Ranking is by sorted paladin name over the synced plan, so every client
+-- computes the same split. Returns rank-ordered { { pally, id or nil }, ... };
+-- a nil id means that paladin has no pet duty (more coverers than blessings).
+function Engine.PetSplit(entry)
+	local plan = HO.Plan.Active()
+	local ownerEntry = entry.owner and HO.Roster.byName[entry.owner]
+	local ownerClass = ownerEntry and ownerEntry.class
+	if not ownerClass then
+		return {}
+	end
+	local covering = {}
+	for pally, rows in pairs(plan.class) do
+		local a = rows[ownerClass]
+		-- a none-marked owner class (no id) is not a real assignment: its
+		-- pets are nobody's duty; leavers' stale rows must not hold a slot
+		if a and a.id and HO.Roster.byName[pally] then
+			table.insert(covering, pally)
+		end
+	end
+	table.sort(covering)
+	local petOpts = HO.db.options.pets
+	local list, seen = {}, {}
+	local function add(id)
+		if id and not seen[id] then
+			seen[id] = true
+			list[#list + 1] = id
+		end
+	end
+	add((petOpts and petOpts.blessing) or 2)
+	add(3) -- Kings
+	add(2) -- Might
+	if entry.unit and UnitPowerType(entry.unit) == 0 then
+		add(1) -- Wisdom, only for pets that actually run on mana
+	end
+	local split = {}
+	for i, pally in ipairs(covering) do
+		split[i] = { pally = pally, id = list[i] }
+	end
+	return split
+end
+
 local function TargetBlessing(plan, me, entry)
 	local overrides = plan.player[me]
 	local override = overrides and entry.name and overrides[entry.name]
@@ -83,54 +128,16 @@ local function TargetBlessing(plan, me, entry)
 	if entry.isPet then
 		-- pets are the duty of whoever covers the OWNER's class (a hunter's pet
 		-- is the hunter-coverer's duty; the pet's own pseudo-class may have no
-		-- player row at all). Every paladin with such a row takes one slot of a
-		-- ranked pet-blessing list, so several paladins stack the configured
-		-- blessing, Kings and — on mana pets — Wisdom, instead of all
-		-- duplicating the same single buff. Ranking is by sorted paladin name
-		-- over the synced plan, so every client computes the same split.
+		-- player row at all); see Engine.PetSplit for the stacking rule
 		if not PetIncluded(entry) then
 			return nil, false
 		end
-		local ownerEntry = entry.owner and HO.Roster.byName[entry.owner]
-		local ownerClass = ownerEntry and ownerEntry.class
-		if not ownerClass then
-			return nil, false
-		end
-		local covering = {}
-		for pally, rows in pairs(plan.class) do
-			local a = rows[ownerClass]
-			-- a none-marked owner class (no id) is not a real assignment: its
-			-- pets are nobody's duty; leavers' stale rows must not hold a slot
-			if a and a.id and HO.Roster.byName[pally] then
-				table.insert(covering, pally)
+		for _, duty in ipairs(Engine.PetSplit(entry)) do
+			if duty.pally == me then
+				return duty.id, false
 			end
 		end
-		table.sort(covering)
-		local rank
-		for i, pally in ipairs(covering) do
-			if pally == me then
-				rank = i
-				break
-			end
-		end
-		if not rank then
-			return nil, false
-		end
-		local petOpts = HO.db.options.pets
-		local list, seen = {}, {}
-		local function add(id)
-			if id and not seen[id] then
-				seen[id] = true
-				list[#list + 1] = id
-			end
-		end
-		add((petOpts and petOpts.blessing) or 2)
-		add(3) -- Kings
-		add(2) -- Might
-		if entry.unit and UnitPowerType(entry.unit) == 0 then
-			add(1) -- Wisdom, only for pets that actually run on mana
-		end
-		return list[rank], false
+		return nil, false
 	end
 	local assigns = plan.class[me]
 	local assign = assigns and entry.class and assigns[entry.class]

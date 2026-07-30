@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-07-30
+
+Sync protocol stays v4 — compatible with 0.17.x–0.31.x.
+
+### Added
+- **ElvUI skin** — and not a lookalike: it reads the running ElvUI
+  installation's profile (backdrop, border and value colors plus the general
+  font), so HolyOrders matches what your ElvUI actually looks like, custom
+  profiles included. Buttons are restyled through ElvUI's own skin API. Only
+  selectable while ElvUI is loaded; after switching ElvUI profiles a reload
+  applies the new colors.
+- Skins can now swap the **font face** across all HolyOrders text — available
+  to third-party skins through the same adapter API.
+
 ## [0.31.0] - 2026-07-30
 
 Sync protocol stays v4 — compatible with 0.17.x–0.30.x.

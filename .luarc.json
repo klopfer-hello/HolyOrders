@@ -15,7 +15,9 @@
 		"GetTalentInfo",
 		"InterfaceOptionsFrame_OpenToCategory",
 		"UNKNOWNOBJECT",
-		"GetMinimapShape"
+		"GetMinimapShape",
+		"AUTOCOMPLETE_LIST",
+		"AutoCompleteEditBox_OnEnterPressed"
 	],
 	"diagnostics.disable": [
 		"lowercase-global",

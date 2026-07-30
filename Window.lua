@@ -718,6 +718,13 @@ function Window.Create()
 		whileDead = true,
 		hideOnEscape = true,
 		preferredIndex = 3, -- avoid tainting the default popup slots
+		-- name autocompletion from friends, guild and recent contacts; the
+		-- INVITE preset excludes people already in the group — exactly the
+		-- pool expected paladins come from. All guarded: without the API the
+		-- popup is a plain edit box.
+		autoCompleteSource = GetAutoCompleteResults,
+		autoCompleteArgs = (AUTOCOMPLETE_LIST and AUTOCOMPLETE_LIST.INVITE)
+			and { AUTOCOMPLETE_LIST.INVITE.include, AUTOCOMPLETE_LIST.INVITE.exclude } or nil,
 		OnAccept = function(self)
 			-- the editBox property is not guaranteed on this client: fall back
 			-- to resolving the child frame by its global name
@@ -725,6 +732,11 @@ function Window.Create()
 			Window.ExpectFromPopup(eb and eb:GetText())
 		end,
 		EditBoxOnEnterPressed = function(self)
+			-- enter first accepts a highlighted autocomplete suggestion; only
+			-- an enter the autocomplete did not consume submits the name
+			if AutoCompleteEditBox_OnEnterPressed and AutoCompleteEditBox_OnEnterPressed(self) then
+				return
+			end
 			-- self IS the edit box here; read it directly before hiding
 			local text = self:GetText()
 			self:GetParent():Hide()

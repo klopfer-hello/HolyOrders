@@ -7,6 +7,8 @@
 -- dependent addons register in time). A def supports:
 --   palette      table of HO.Colors overrides, or a function returning one
 --                (resolved at load; see Colors.lua for the available keys)
+--   font         a font file path, or a function returning one — swaps the
+--                face of every HolyOrders text (sizes and flags are kept)
 --   Panel        function(frame, corner) — paint window/fly-out panel chrome
 --   Button       function(btn) — restyle a UIPanelButtonTemplate (nil = stock)
 --   CloseButton  function(btn) — restyle a UIPanelCloseButton (nil = stock)
@@ -39,6 +41,39 @@ Skin.tex = {
 Skin.WHITE = "Interface\\Buttons\\WHITE8x8"
 -- 9-slice geometry of the default panel art (used by Skins/Default.lua)
 Skin.CORNER = 16
+
+-- fonts --------------------------------------------------------------------------
+-- HolyOrders texts use these font objects instead of the Blizzard ones, so a
+-- skin can swap the face in ONE place (font-object changes propagate to every
+-- attached FontString live). Each mirrors the Blizzard object it inherits.
+
+local FONT_ROLES = {
+	{ name = "HolyOrdersFontNormal", inherit = "GameFontNormal" },
+	{ name = "HolyOrdersFontNormalSmall", inherit = "GameFontNormalSmall" },
+	{ name = "HolyOrdersFontNormalLarge", inherit = "GameFontNormalLarge" },
+	{ name = "HolyOrdersFontHighlight", inherit = "GameFontHighlight" },
+	{ name = "HolyOrdersFontHighlightSmall", inherit = "GameFontHighlightSmall" },
+	{ name = "HolyOrdersFontDisableSmall", inherit = "GameFontDisableSmall" },
+}
+for _, role in ipairs(FONT_ROLES) do
+	if not _G[role.name] then
+		local f = CreateFont(role.name)
+		f:CopyFontObject(role.inherit)
+	end
+end
+
+-- apply a skin's font face: re-copy from the Blizzard base (resets a previous
+-- skin's face and picks up sizes/flags), then swap only the face
+local function ApplyFont(face)
+	for _, role in ipairs(FONT_ROLES) do
+		local f = _G[role.name]
+		f:CopyFontObject(role.inherit)
+		if face then
+			local _, size, flags = f:GetFont()
+			f:SetFont(face, size, flags)
+		end
+	end
+end
 
 -- registry ---------------------------------------------------------------------
 
@@ -84,6 +119,11 @@ function Skin.Init()
 			HO.Colors[key] = colour
 		end
 	end
+	local face = def and def.font
+	if type(face) == "function" then
+		face = face()
+	end
+	ApplyFont(face) -- nil restores the Blizzard faces
 	HO.Log("skin", "active skin: " .. tostring(s)
 		.. " (option: " .. tostring(HO.db and HO.db.options and HO.db.options.skin) .. ")")
 end

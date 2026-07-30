@@ -87,7 +87,7 @@ local function CreateBlessingButton(id)
 	btn.rankBg:SetTexture("Interface\\Common\\Indicator-Gray") -- soft dark disc
 	btn.rankBg:SetVertexColor(0, 0, 0, 0.85)
 	btn.rankBg:Hide()
-	btn.rank = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	btn.rank = btn:CreateFontString(nil, "OVERLAY", "HolyOrdersFontNormal")
 	btn.rank:SetPoint("CENTER", btn.rankBg, "CENTER", 0, 0)
 	btn.rank:SetDrawLayer("OVERLAY", 2)
 	btn.rank:SetTextColor(1, 0.95, 0.6, 1) -- bright gold digit
@@ -128,7 +128,7 @@ local function Create()
 	-- same dark rounded panel + thin gold border as the assignment window / fly-out
 	HO.Skin.Panel(frame)
 
-	frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	frame.title = frame:CreateFontString(nil, "OVERLAY", "HolyOrdersFontNormal")
 	frame.title:SetPoint("TOPLEFT", PAD, -9)
 	frame.title:SetText(L["Buff Request"])
 	frame.title:SetTextColor(HO.Colors.rgb("goldBright"))
@@ -156,11 +156,11 @@ local function Create()
 	HO.Skin.Button(clear)
 	clear:SetScript("OnClick", function() Apply({}) end)
 
-	statusText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+	statusText = frame:CreateFontString(nil, "OVERLAY", "HolyOrdersFontHighlightSmall")
 	statusText:SetPoint("TOPLEFT", PAD, rowY - BTN_SIZE - 8)
 	statusText:SetJustifyH("LEFT")
 
-	local hint = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+	local hint = frame:CreateFontString(nil, "OVERLAY", "HolyOrdersFontDisableSmall")
 	hint:SetPoint("TOPLEFT", statusText, "BOTTOMLEFT", 0, -3)
 	hint:SetJustifyH("LEFT")
 	hint:SetText(L["click blessings in priority order — click again to remove"])

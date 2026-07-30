@@ -22,10 +22,14 @@ local BROADCAST_DELAY = 1.5 -- coalesce a burst of plan edits into one broadcast
 local NASSIGN_MAX = 5 -- the legacy format packs at most 5 override entries per message
 local LEGACY_NUM_CLASSES = 9 -- max classes on the BCC branch of the legacy addon
 
--- HolyOrders blessing id -> legacy blessing number
-local HO_TO_LEGACY = { [1] = 1, [2] = 3, [3] = 2, [4] = 4, [5] = 5, [6] = 6 }
+-- HolyOrders blessing id -> legacy blessing number. The orders are IDENTICAL
+-- (1 Wisdom, 2 Might, 3 Kings, 4 Salvation, 5 Light, 6 Sanctuary) — verified
+-- against the legacy client's spell-id table, NOT its icon tables, whose file
+-- names are misleading. An earlier swap of 2 and 3 here made every emitted
+-- Might arrive as Kings and vice versa.
+local HO_TO_LEGACY = { [1] = 1, [2] = 2, [3] = 3, [4] = 4, [5] = 5, [6] = 6 }
 -- legacy caps slot (1..6, legacy blessing order) -> HolyOrders blessing id
-local LEGACY_SLOT_TO_HO = { 1, 3, 2, 4, 5, 6 }
+local LEGACY_SLOT_TO_HO = { 1, 2, 3, 4, 5, 6 }
 -- class token -> legacy class index (BCC order)
 local LEGACY_CLASS_INDEX = { WARRIOR = 1, ROGUE = 2, PRIEST = 3, DRUID = 4, PALADIN = 5, HUNTER = 6, MAGE = 7, WARLOCK = 8, SHAMAN = 9 }
 local LEGACY_INDEX_CLASS = {}

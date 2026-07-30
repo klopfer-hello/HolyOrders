@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-07-30
+
+Sync protocol stays v4 — compatible with 0.17.x–0.30.x.
+
+### Added
+- **Pre-planning**: assign blessings to paladins who have not joined yet. The
+  **+** button next to the window columns (or `/ho expect <name>`) adds a
+  greyed column — with **name autocompletion** from friends, guild and recent
+  contacts (Tab accepts the suggestion). When the paladin arrives, the
+  pre-planned lane applies automatically (verified against crossing updates),
+  and a chat warning points out anything their build cannot cast.
+  Right-clicking the greyed name removes them.
+- **Lane swap**: click one paladin's name in the window, then another, to
+  swap their complete assignments — handy when the Kings paladin shows up on
+  an alt.
+- **Sync lock**: while a plan broadcast or the settle window after a pull is
+  running, the assignment window dims and shows a spinner, then releases
+  itself the moment the sync is done — no more editing a plan that is about
+  to be replaced.
+- The legacy-addon bridge now emits **aura state**: your own aura choice and
+  capabilities, plus recorded aura assignments of other paladins (same
+  acceptance rule as row pushes).
+
+### Fixed
+- **Might and Kings were swapped on the legacy wire** — what you assigned as
+  Might arrived as Kings in legacy clients and vice versa. The numbering is
+  verified against the legacy client's spell table now.
+- A legacy client that rejected or lost a push announces its own (often
+  empty) row, which used to overwrite the pushed assignments for everyone
+  while the bridge stayed silent; it now re-pushes immediately.
+- **Auras no longer flip after joins**: greeting-time aura batches from every
+  client used to overwrite each other in random arrival order; they only fill
+  gaps now, and stale entries of long-gone paladins are no longer broadcast.
+
 ## [0.30.0] - 2026-07-29
 
 Sync protocol stays v4 — compatible with 0.17.x–0.29.x.

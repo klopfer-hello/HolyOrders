@@ -824,19 +824,34 @@ function Window.Refresh()
 			btn:SetHeight(14)
 			btn.text = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 			btn.text:SetAllPoints(btn)
-			btn:SetScript("OnClick", function(self)
-				Window.HeaderClick(self.pally)
+			btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+			btn:SetScript("OnClick", function(self, mouseBtn)
+				if mouseBtn == "RightButton" then
+					-- right-click removes an EXPECTED paladin's column; present
+					-- paladins leave with their group, not with a click
+					if self.expected then
+						HO.Plan.ToggleExpected(self.pally)
+						HO.Print(self.pally .. " removed from the expected list (their pre-planned row is kept)")
+						Window.Refresh()
+					end
+				else
+					Window.HeaderClick(self.pally)
+				end
 			end)
 			btn:SetScript("OnEnter", function(self)
 				GameTooltip:SetOwner(self, "ANCHOR_TOP")
 				GameTooltip:SetText(self.pally, 1, 1, 1)
 				GameTooltip:AddLine(L["Click a paladin's name, then another, to swap their assignments"], nil, nil, nil, true)
+				if self.expected then
+					GameTooltip:AddLine(L["Right-click removes this expected paladin"], nil, nil, nil, true)
+				end
 				GameTooltip:Show()
 			end)
 			btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 			win.colHeader[c] = btn
 		end
 		btn.pally = pallys[c]
+		btn.expected = expectedCol[pallys[c]] or nil
 		btn:ClearAllPoints()
 		btn:SetPoint("TOPLEFT", win, "TOPLEFT", NAME_W + (c - 1) * COL_W, -(HEADER_H + 4))
 		btn:SetWidth(COL_W - COL_GAP)

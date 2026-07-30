@@ -20,6 +20,13 @@ A fully independent, from-scratch implementation.
 - **Deterministic auto-assign.** One click distributes coverage across the
   paladins present, weighing talents and spell ranks so the stronger buff wins.
   Same raid, same talents → same plan, every time.
+- **Pre-plan paladins before they join.** Two more palas arriving after the
+  break? Add them with the **+** button (name autocompletion from friends and
+  guild) and assign their blessings ahead of time — the greyed column becomes
+  real when they join and the pre-planned assignments apply automatically,
+  with a warning if their build can't cast what you planned.
+- **Lane swap.** Click one paladin's name, then another, to swap their
+  complete assignments — handy when the Kings paladin shows up on an alt.
 - **Solo-paladin mode.** Alone as a paladin? Salvation goes on everyone except
   tanks, automatically.
 - **Reliable sync.** The comm protocol is designed so what you see is what every
@@ -63,6 +70,8 @@ A fully independent, from-scratch implementation.
 - `/ho` — open the assignment window
 - `/ho auto` — compute assignments for the paladins present
 - `/ho request` — request a blessing for yourself (non-paladins too)
+- `/ho expect <name>` — pre-plan a paladin who has not joined yet (same as the
+  window's **+** button; right-click their greyed name to remove them)
 - `/ho aura` — set or show your paladin aura
 - `/ho help` — list all commands (`/ho help debug` for diagnostics)
 - Options: **Interface → AddOns → HolyOrders** (or `/ho opt`)

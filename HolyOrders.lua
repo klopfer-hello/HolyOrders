@@ -14,6 +14,7 @@ local DB_DEFAULTS = {
 	prefs = {},     -- class/spec blessing preferences
 	memberPrefs = {}, -- [fullName] = blessingID: remembered per-member blessing likings
 	specCache = {}, -- per-character spec tags
+	expected = {},  -- [fullName] = true: paladins pre-planned before they join
 	log = {},       -- persistent debug log (ring buffer, see HO.Log)
 }
 

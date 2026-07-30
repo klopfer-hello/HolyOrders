@@ -71,6 +71,14 @@ L["Encounter toggle: swap Salvation for substitutes, click again to restore the 
 -- ("Salv raus" = click removes Salvation, "Salv rein" = click restores it)
 L["No-Salv OFF"] = "Salv raus"
 L["No-Salv ON"] = "Salv rein"
+-- pre-planning (expected paladins) and the lane swap
+L["Add an expected paladin: assign their blessings before they join"] = "Erwarteten Paladin hinzufügen: Segen zuweisen, bevor er der Gruppe beitritt"
+L["Pre-plan a paladin who has not joined yet — enter their name:"] = "Für einen Paladin vorplanen, der noch nicht in der Gruppe ist — Name eingeben:"
+L["Click a paladin's name, then another, to swap their assignments"] = "Einen Paladinnamen anklicken, dann einen zweiten — tauscht ihre Zuweisungen"
+L["swap: %s selected — click another paladin's name to swap assignments (same name cancels)"] = "Tausch: %s gewählt — zweiten Paladinnamen anklicken zum Tauschen (gleicher Name bricht ab)"
+L["swap cancelled"] = "Tausch abgebrochen"
+L["assignments swapped: %s and %s"] = "Zuweisungen getauscht: %s und %s"
+L["swap failed: "] = "Tausch fehlgeschlagen: "
 -- window legend, plain language ("Nüchtern & knapp")
 L["Click an icon = pick a blessing · right-click = remove · class name = show members"] = "Icon anklicken = Segen wählen · Rechtsklick = entfernen · Klassenname = Mitglieder zeigen"
 L["Click a member's name = change their spec/role · right-click the name = mark as tank"] = "Name anklicken = Skillung/Rolle wechseln · Rechtsklick auf den Namen = als Tank markieren"

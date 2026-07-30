@@ -378,6 +378,160 @@ function Plan.Save(label)
 	return sig
 end
 
+-- pre-planning: expected paladins --------------------------------------------
+-- Paladins announced for later ("two more palas after the break") can be
+-- assigned before they join: their rows are ordinary plan rows (editable by
+-- the usual permission rules — an absent paladin has no consent flag — saved
+-- with the plan, and pushed to legacy clients once they arrive). The expected
+-- list only adds window columns and drives the arrival handling below.
+
+local ARRIVAL_REASSERT_DELAY = 6 -- seconds; an arriving client has announced its own row by then
+
+-- expected paladins who are still absent, sorted (window columns)
+function Plan.Expected()
+	local list = {}
+	for name in pairs((HO.db and HO.db.expected) or {}) do
+		if not HO.Roster.byName[name] then
+			list[#list + 1] = name
+		end
+	end
+	table.sort(list)
+	return list
+end
+
+-- add/remove an expected paladin; returns true when added
+function Plan.ToggleExpected(name)
+	HO.db.expected = HO.db.expected or {}
+	if HO.db.expected[name] then
+		HO.db.expected[name] = nil
+		return false
+	end
+	HO.db.expected[name] = true
+	return true
+end
+
+-- swap two paladins' complete duties (class rows and per-member overrides;
+-- auras are personal and stay). Routed through the normal Set* calls so
+-- revisions bump, peers sync and permissions gate exactly like manual edits.
+function Plan.SwapPaladins(a, b)
+	if not a or not b or a == b then
+		return false, "pick two different paladins"
+	end
+	local editor = HO.FullName("player")
+	if HO.Comm and editor then
+		if not HO.Comm.CanEdit(editor, a) then
+			return false, "no permission to edit " .. a
+		end
+		if not HO.Comm.CanEdit(editor, b) then
+			return false, "no permission to edit " .. b
+		end
+	end
+	local plan = Plan.Active()
+	local function copyRow(name)
+		local out = {}
+		for classToken, x in pairs(plan.class[name] or {}) do
+			if x.id then
+				out[classToken] = { id = x.id, mode = x.mode }
+			end
+		end
+		return out
+	end
+	local rowA, rowB = copyRow(a), copyRow(b)
+	local union = {}
+	for classToken in pairs(rowA) do union[classToken] = true end
+	for classToken in pairs(rowB) do union[classToken] = true end
+	for classToken in pairs(union) do
+		local xa, xb = rowA[classToken], rowB[classToken]
+		Plan.SetClassAssignment(a, classToken, xb and xb.id or 0, xb and xb.mode)
+		Plan.SetClassAssignment(b, classToken, xa and xa.id or 0, xa and xa.mode)
+	end
+	local ovA, ovB = {}, {}
+	for target, id in pairs(plan.player[a] or {}) do ovA[target] = id end
+	for target, id in pairs(plan.player[b] or {}) do ovB[target] = id end
+	local ovUnion = {}
+	for target in pairs(ovA) do ovUnion[target] = true end
+	for target in pairs(ovB) do ovUnion[target] = true end
+	for target in pairs(ovUnion) do
+		Plan.SetPlayerOverride(a, target, ovB[target] or 0)
+		Plan.SetPlayerOverride(b, target, ovA[target] or 0)
+	end
+	HO.Log("plan", "swapped duties: " .. a .. " <> " .. b)
+	return true
+end
+
+-- an expected paladin joined: drop them from the list. If they run this addon
+-- their own (usually empty) row broadcast overwrites the pre-plan — the owner
+-- is authoritative by protocol — so capture the pre-planned row and re-assert
+-- it shortly after as a normal permission-gated edit, but only onto a row
+-- that is still empty by then: a paladin who arrives with own assignments is
+-- respected, not clobbered.
+local function HandleArrivals()
+	local expected = HO.db and HO.db.expected
+	if not expected or not next(expected) then
+		return
+	end
+	local present = {} -- case-insensitive lookup: typos in /ho expect must still match
+	for rname in pairs(HO.Roster.byName) do
+		present[rname:lower()] = rname
+	end
+	for name in pairs(expected) do
+		local real = present[name:lower()]
+		if real then
+			expected[name] = nil
+			local plan = Plan.Active()
+			-- the row was pre-planned under the typed key; move it to the real
+			-- name if the capitalization differed
+			if real ~= name then
+				plan.class[real] = plan.class[real] or plan.class[name]
+				plan.class[name] = nil
+				plan.player[real] = plan.player[real] or plan.player[name]
+				plan.player[name] = nil
+			end
+			local captured
+			for classToken, a in pairs(plan.class[real] or {}) do
+				if a.id then
+					captured = captured or {}
+					captured[classToken] = { id = a.id, mode = a.mode }
+				end
+			end
+			if captured then
+				HO.Announce(real .. " arrived — holding their pre-planned assignments")
+				C_Timer.After(ARRIVAL_REASSERT_DELAY, function()
+					local current = Plan.Active().class[real]
+					for _, a in pairs(current or {}) do
+						if a.id then
+							return -- they brought or kept own assignments: respect them
+						end
+					end
+					local editor = HO.FullName("player")
+					if HO.Comm and editor and not HO.Comm.CanEdit(editor, real) then
+						return -- no permission to restore; their empty row stands
+					end
+					for classToken, a in pairs(captured) do
+						Plan.SetClassAssignment(real, classToken, a.id, a.mode)
+					end
+					HO.Announce("pre-planned assignments applied for " .. real)
+					-- their capabilities are known by now (from their client's
+					-- greeting): warn loudly when the pre-plan does not fit —
+					-- e.g. Kings/Sanctuary pre-planned onto a build without the
+					-- talent. The lane swap (click two window headers) fixes it.
+					local peer = HO.Comm and HO.Comm.peers[real]
+					if peer and peer.caps then
+						for _, a in pairs(captured) do
+							local cap = peer.caps[a.id]
+							if cap and not cap.known then
+								local blessing = HO.Data.blessings[a.id]
+								HO.Print(real .. " cannot cast " .. ((blessing and blessing.name) or ("blessing " .. a.id))
+									.. " — click two paladin names in the window to swap lanes")
+							end
+						end
+					end
+				end)
+			end
+		end
+	end
+end
+
 -- auto-apply / suggestion ----------------------------------------------------
 
 Plan.suggestion = nil -- signature of the suggested stored plan, if any
@@ -387,6 +541,7 @@ local function OnRosterChanged()
 	if not HO.db then
 		return
 	end
+	HandleArrivals()
 	local sig = Plan.CurrentSignature()
 	if sig == "" or sig == lastHandledSig then
 		if Plan.suggestion ~= sig then

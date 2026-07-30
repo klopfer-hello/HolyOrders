@@ -482,6 +482,42 @@ HO.commands["getlog"] = function(rest)
 end
 
 -- encounter toggle: swap Salvation out, revert afterwards
+-- pre-planning: /ho expect <name> toggles a paladin who has not joined yet;
+-- their window column appears immediately and can be assigned like any other
+HO.commands["expect"] = function(rest)
+	local name = rest:match("^(%S+)$")
+	if not name then
+		local list = HO.Plan.Expected()
+		if #list == 0 then
+			HO.Print("no expected paladins — '/ho expect <name>' pre-plans one before they join")
+		else
+			HO.Print(#list .. " expected paladin(s): " .. table.concat(list, ", ") .. " — '/ho expect <name>' removes")
+		end
+		return
+	end
+	if name:lower() == "clear" then
+		local n = #HO.Plan.Expected()
+		HO.db.expected = {}
+		HO.Print(n .. " expected paladin(s) cleared (their pre-planned rows are kept)")
+		HO.Window.Refresh()
+		return
+	end
+	name = name:gsub("^%l", string.upper)
+	if not name:find("-", 1, true) then
+		name = name .. "-" .. (GetNormalizedRealmName() or "")
+	end
+	if HO.Roster.byName[name] then
+		HO.Print(name .. " is already in the group — assign them normally")
+		return
+	end
+	if HO.Plan.ToggleExpected(name) then
+		HO.Print(name .. " added as expected paladin — their grey column in the window is ready to assign")
+	else
+		HO.Print(name .. " removed from the expected list (their pre-planned row is kept)")
+	end
+	HO.Window.Refresh()
+end
+
 HO.commands["nosalv"] = function()
 	local myself = HO.FullName("player")
 	if IsInGroup() and HO.Comm and not HO.Comm.CanBulk(myself) then
@@ -746,6 +782,7 @@ local DESC = {
 	auto = "compute blessing assignments",
 	rebuff = "toggle pre-pull force rebuff",
 	nosalv = "toggle no-Salvation encounter mode",
+	expect = "pre-plan a paladin who has not joined yet",
 	plan = "manage stored roster plans",
 	skin = "switch the UI skin",
 	assign = "set a class blessing assignment",

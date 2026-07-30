@@ -173,6 +173,33 @@ local function ToggleExpandAll()
 	Window.Refresh()
 end
 
+-- lane swap: first header click selects the source, the second swaps ----------
+
+local swapFrom = nil
+
+function Window.HeaderClick(pally)
+	if not pally then
+		return
+	end
+	if not swapFrom then
+		swapFrom = pally
+		HO.Print(string.format(L["swap: %s selected — click another paladin's name to swap assignments (same name cancels)"], pally))
+	elseif swapFrom == pally then
+		swapFrom = nil
+		HO.Print(L["swap cancelled"])
+	else
+		local a = swapFrom
+		swapFrom = nil
+		local ok, err = HO.Plan.SwapPaladins(a, pally)
+		if ok then
+			HO.Print(string.format(L["assignments swapped: %s and %s"], a, pally))
+		else
+			HO.Print(L["swap failed: "] .. tostring(err))
+		end
+	end
+	Window.Refresh()
+end
+
 -- cell click handlers ---------------------------------------------------------
 
 local function MayEdit(pally)
@@ -664,6 +691,49 @@ function Window.Create()
 	win.expandBtn:SetPoint("RIGHT", win.salvBtn, "LEFT", -6, 0)
 
 	win.colHeader = {}
+
+	-- "+" column button: pre-plan a paladin who has not joined yet
+	StaticPopupDialogs["HOLYORDERS_EXPECT"] = StaticPopupDialogs["HOLYORDERS_EXPECT"] or {
+		text = "HolyOrders: %s",
+		button1 = _G.ACCEPT or "OK",
+		button2 = _G.CANCEL or "Cancel",
+		hasEditBox = true,
+		timeout = 0,
+		whileDead = true,
+		hideOnEscape = true,
+		preferredIndex = 3, -- avoid tainting the default popup slots
+		OnAccept = function(self)
+			local name = self.editBox and self.editBox:GetText() or ""
+			if name ~= "" then
+				HO.commands["expect"](name)
+			end
+		end,
+		EditBoxOnEnterPressed = function(self)
+			local parent = self:GetParent()
+			local name = parent.editBox and parent.editBox:GetText() or ""
+			parent:Hide()
+			if name ~= "" then
+				HO.commands["expect"](name)
+			end
+		end,
+		EditBoxOnEscapePressed = function(self)
+			self:GetParent():Hide()
+		end,
+	}
+	win.addPallyBtn = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
+	win.addPallyBtn:SetSize(22, 18)
+	win.addPallyBtn:SetText("+")
+	HO.Skin.Button(win.addPallyBtn)
+	win.addPallyBtn:SetScript("OnClick", function()
+		StaticPopup_Show("HOLYORDERS_EXPECT", L["Pre-plan a paladin who has not joined yet — enter their name:"])
+	end)
+	win.addPallyBtn:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:SetText(L["Add an expected paladin: assign their blessings before they join"], 1, 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	win.addPallyBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
 	win.hint = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	win.hint:SetPoint("BOTTOMLEFT", 10, 6)
 	win.hint:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -78, 6) -- clear the corner crest
@@ -697,6 +767,12 @@ function Window.Refresh()
 	end
 	local plan = HO.Plan.Active()
 	local pallys = HO.Roster.Paladins()
+	-- expected paladins get columns after the present ones, greyed in the header
+	local expectedCol = {}
+	for _, name in ipairs(HO.Plan.Expected()) do
+		pallys[#pallys + 1] = name
+		expectedCol[name] = true
+	end
 	local numCols = math.min(#pallys, MAX_COLS)
 
 	-- reflect the expand/collapse-all state on its toggle ("-" = all open)
@@ -725,22 +801,54 @@ function Window.Refresh()
 		.. L["Shift-click an icon changes how it is cast:"] .. "\n"
 		.. string.format(L["|cff40c0ffA|r automatic: big from %d members, small otherwise — |cffffd100G|r always big (whole class, 1 Symbol) — |cff40ff40S|r always small (10 min each)"], HO.db.options.greaterMin or 2))
 
-	-- column headers (paladin short names, vertical position under header)
+	-- column headers (paladin short names): clickable — click one name, then
+	-- another, to swap the two paladins' complete assignments (lane swap)
 	for c = 1, numCols do
-		local fs = win.colHeader[c]
-		if not fs then
-			fs = win:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-			win.colHeader[c] = fs
+		local btn = win.colHeader[c]
+		if not btn then
+			btn = CreateFrame("Button", nil, win)
+			btn:SetHeight(14)
+			btn.text = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+			btn.text:SetAllPoints(btn)
+			btn:SetScript("OnClick", function(self)
+				Window.HeaderClick(self.pally)
+			end)
+			btn:SetScript("OnEnter", function(self)
+				GameTooltip:SetOwner(self, "ANCHOR_TOP")
+				GameTooltip:SetText(self.pally, 1, 1, 1)
+				GameTooltip:AddLine(L["Click a paladin's name, then another, to swap their assignments"], nil, nil, nil, true)
+				GameTooltip:Show()
+			end)
+			btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+			win.colHeader[c] = btn
 		end
-		fs:ClearAllPoints()
-		fs:SetPoint("TOPLEFT", win, "TOPLEFT", NAME_W + (c - 1) * COL_W, -(HEADER_H + 4))
-		fs:SetWidth(COL_W - COL_GAP)
+		btn.pally = pallys[c]
+		btn:ClearAllPoints()
+		btn:SetPoint("TOPLEFT", win, "TOPLEFT", NAME_W + (c - 1) * COL_W, -(HEADER_H + 4))
+		btn:SetWidth(COL_W - COL_GAP)
 		local short = pallys[c]:match("^([^%-]+)") or pallys[c]
-		fs:SetText(Utf8Truncate(short, HEADER_MAX_CHARS))
-		fs:Show()
+		short = Utf8Truncate(short, HEADER_MAX_CHARS)
+		if swapFrom == pallys[c] then
+			short = "|cffffff00" .. short .. "|r" -- selected as swap source
+		elseif expectedCol[pallys[c]] then
+			short = "|cff9d9d9d" .. short .. "|r" -- grey = pre-planned, not in the group yet
+		end
+		btn.text:SetText(short)
+		btn:Show()
 	end
 	for c = numCols + 1, #win.colHeader do
 		win.colHeader[c]:Hide()
+	end
+
+	-- "+" adds an expected paladin's column (see /ho expect); hidden when full
+	if win.addPallyBtn then
+		if numCols < MAX_COLS then
+			win.addPallyBtn:ClearAllPoints()
+			win.addPallyBtn:SetPoint("TOPLEFT", win, "TOPLEFT", NAME_W + numCols * COL_W + 2, -(HEADER_H + 1))
+			win.addPallyBtn:Show()
+		else
+			win.addPallyBtn:Hide()
+		end
 	end
 
 	-- group roster members and pets by class
@@ -997,7 +1105,9 @@ function Window.Refresh()
 		end
 	end
 
-	win:SetSize(math.max(NAME_W + numCols * COL_W + PAD, 520), viewHeight + BOTTOM_PAD)
+	-- reserve one extra column of width while the "+" add button is shown
+	local addW = (numCols < MAX_COLS) and COL_W or 0
+	win:SetSize(math.max(NAME_W + numCols * COL_W + addW + PAD, 520), viewHeight + BOTTOM_PAD)
 
 	-- a tooltip open over a cell now describes a repurposed cell; a single
 	-- owner check re-renders it (or hides it if the cell went away)

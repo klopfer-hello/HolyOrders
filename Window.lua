@@ -770,6 +770,43 @@ function Window.Create()
 	end)
 	win.addPallyBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
+	-- sync lock: while a plan snapshot stream or a pull settle window is
+	-- active, the window dims, swallows clicks and shows a spinner; it
+	-- releases itself the moment the sync is over (checked 4x/second)
+	win.syncOverlay = CreateFrame("Frame", nil, win)
+	win.syncOverlay:SetAllPoints(win)
+	win.syncOverlay:SetFrameLevel(win:GetFrameLevel() + 40)
+	win.syncOverlay:EnableMouse(true) -- the lock: clicks stop here
+	local dim = win.syncOverlay:CreateTexture(nil, "BACKGROUND")
+	dim:SetAllPoints()
+	dim:SetColorTexture(0, 0, 0, 0.55)
+	win.syncOverlay.spin = win.syncOverlay:CreateTexture(nil, "ARTWORK")
+	win.syncOverlay.spin:SetSize(28, 28)
+	win.syncOverlay.spin:SetPoint("CENTER", 0, 14)
+	win.syncOverlay.spin:SetTexture("Interface\\COMMON\\StreamCircle")
+	win.syncOverlay.spin:SetVertexColor(HO.Colors.rgb("goldBright", 1))
+	local spinAnim = win.syncOverlay.spin:CreateAnimationGroup()
+	local spinRot = spinAnim:CreateAnimation("Rotation")
+	spinRot:SetDegrees(-360)
+	spinRot:SetDuration(1.5)
+	spinAnim:SetLooping("REPEAT")
+	local syncLabel = win.syncOverlay:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	syncLabel:SetPoint("TOP", win.syncOverlay.spin, "BOTTOM", 0, -8)
+	syncLabel:SetText(L["Synchronizing with the group..."])
+	win.syncOverlay:SetScript("OnShow", function() spinAnim:Play() end)
+	win.syncOverlay:SetScript("OnHide", function() spinAnim:Stop() end)
+	win.syncOverlay:SetScript("OnUpdate", function(self, elapsed)
+		self.t = (self.t or 0) + elapsed
+		if self.t > 0.25 then
+			self.t = 0
+			if not (HO.Comm and HO.Comm.SyncActive and HO.Comm.SyncActive()) then
+				self:Hide()
+				Window.Refresh() -- show the settled state immediately
+			end
+		end
+	end)
+	win.syncOverlay:Hide()
+
 	win.hint = win:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 	win.hint:SetPoint("BOTTOMLEFT", 10, 6)
 	win.hint:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -78, 6) -- clear the corner crest
@@ -801,6 +838,16 @@ function Window.Refresh()
 	if not win or not win.built or not win:IsShown() then
 		return
 	end
+	-- reflect the sync state on the lock overlay (it hides itself when done)
+	if win.syncOverlay then
+		local syncing = HO.Comm and HO.Comm.SyncActive and HO.Comm.SyncActive()
+		if syncing and not win.syncOverlay:IsShown() then
+			win.syncOverlay:Show()
+		elseif not syncing and win.syncOverlay:IsShown() then
+			win.syncOverlay:Hide()
+		end
+	end
+
 	local plan = HO.Plan.Active()
 	local pallys = HO.Roster.Paladins()
 	-- expected paladins get columns after the present ones, greyed in the header

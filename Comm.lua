@@ -36,6 +36,9 @@ local me -- own full name, set on login
 -- incoming PLANAPPLY buffers, one per sender ({ rows={}, tanks={} }, applied
 -- atomically at PE): two leads broadcasting at once must not clobber each other
 local planBuffers = {}
+local SYNC_SETTLE = 4 -- seconds after a pull during which replies still land
+local PLAN_STREAM_TIMEOUT = 10 -- an abandoned snapshot stream stops counting as active
+local syncSettleUntil = 0
 
 local UPDATE_URL = "https://www.curseforge.com/wow/addons/holyorders"
 
@@ -800,9 +803,11 @@ end
 
 handlers["PS"] = function(sender)
 	-- start (or restart) a snapshot buffer for this sender, discarding any
-	-- half-received one from the same sender
+	-- half-received one from the same sender; the timestamp feeds the
+	-- sync-in-progress indicator and ages out abandoned streams
 	if Comm.CanBulk(sender) then
-		planBuffers[sender] = { rows = {}, tanks = {} }
+		planBuffers[sender] = { rows = {}, tanks = {}, t = GetTime() }
+		RefreshUI() -- show the sync lock immediately, not on the next message
 	end
 end
 
@@ -1386,5 +1391,24 @@ end
 -- ask every paladin to re-broadcast their authoritative row; the R handler
 -- answers with a random-delayed whisper, so a burst of requests self-limits
 function Comm.RequestSync()
+	syncSettleUntil = GetTime() + SYNC_SETTLE
 	Send("R:")
+	if HO.Window and HO.Window.Refresh then
+		HO.Window.Refresh() -- show the sync lock for the settle window
+	end
+end
+
+-- is a sync visibly in progress? True while a plan snapshot stream is
+-- mid-flight (start received, atomic apply pending) or during the settle
+-- window after a pull while the replies land. Drives the window's lock.
+function Comm.SyncActive()
+	if GetTime() < syncSettleUntil then
+		return true
+	end
+	for _, buf in pairs(planBuffers) do
+		if GetTime() - (buf.t or 0) < PLAN_STREAM_TIMEOUT then
+			return true
+		end
+	end
+	return false
 end

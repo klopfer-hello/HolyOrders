@@ -76,6 +76,7 @@ L["Add an expected paladin: assign their blessings before they join"] = "Erwarte
 L["Pre-plan a paladin who has not joined yet — enter their name:"] = "Für einen Paladin vorplanen, der noch nicht in der Gruppe ist — Name eingeben:"
 L["Click a paladin's name, then another, to swap their assignments"] = "Einen Paladinnamen anklicken, dann einen zweiten — tauscht ihre Zuweisungen"
 L["Right-click removes this expected paladin"] = "Rechtsklick entfernt diesen erwarteten Paladin"
+L["Synchronizing with the group..."] = "Synchronisiere mit der Gruppe ..."
 L["swap: %s selected — click another paladin's name to swap assignments (same name cancels)"] = "Tausch: %s gewählt — zweiten Paladinnamen anklicken zum Tauschen (gleicher Name bricht ab)"
 L["swap cancelled"] = "Tausch abgebrochen"
 L["assignments swapped: %s and %s"] = "Zuweisungen getauscht: %s und %s"

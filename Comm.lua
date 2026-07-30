@@ -525,7 +525,9 @@ function Comm.SendKnownAuras(channel, target)
 	end
 	local entries = {}
 	for pally, id in pairs(plan.aura) do
-		if id and id ~= 0 then
+		-- roster members only: the plan persists across sessions, and a
+		-- long-gone paladin's aura must not be resurrected into the group
+		if id and id ~= 0 and HO.Roster.byName[pally] then
 			table.insert(entries, pally .. "=" .. id)
 		end
 	end
@@ -1046,7 +1048,12 @@ handlers["AB"] = function(sender, payload)
 	for entry in string.gmatch(payload, "[^|]+") do
 		local paladin, idStr = entry:match("^(.+)=(%d+)$")
 		local id = paladin and tonumber(idStr)
-		if id and HO.Data.auras[id] and Comm.CanEdit(sender, paladin) then
+		-- GAP-FILL ONLY: greet batches fly from every client on every join,
+		-- in random arrival order — letting them overwrite existing values
+		-- made auras flip with whoever's batch landed last. Deliberate edits
+		-- travel as live AU singles, which do overwrite.
+		if id and HO.Data.auras[id] and not plan.aura[paladin]
+			and Comm.CanEdit(sender, paladin) then
 			plan.aura[paladin] = id
 			changed = true
 		end

@@ -20,6 +20,7 @@ Skins\Default.lua
 Skins\Legacy.lua
 Skins\Forga.lua
 Skins\Biker.lua
+Skins\ElvUI.lua
 Data.lua
 Talents.lua
 Roster.lua

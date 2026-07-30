@@ -17,7 +17,8 @@
 		"UNKNOWNOBJECT",
 		"GetMinimapShape",
 		"AUTOCOMPLETE_LIST",
-		"AutoCompleteEditBox_OnEnterPressed"
+		"AutoCompleteEditBox_OnEnterPressed",
+		"AutoCompleteEditBox_OnTabPressed"
 	],
 	"diagnostics.disable": [
 		"lowercase-global",

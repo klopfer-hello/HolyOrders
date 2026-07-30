@@ -751,7 +751,17 @@ function Window.Create()
 	win.addPallyBtn:SetText("+")
 	HO.Skin.Button(win.addPallyBtn)
 	win.addPallyBtn:SetScript("OnClick", function()
-		StaticPopup_Show("HOLYORDERS_EXPECT", L["Pre-plan a paladin who has not joined yet — enter their name:"])
+		local dialog = StaticPopup_Show("HOLYORDERS_EXPECT", L["Pre-plan a paladin who has not joined yet — enter their name:"])
+		-- the popup's edit box does not forward Tab to the autocomplete (only
+		-- dedicated autocomplete boxes do), so its "Press Tab" hint was dead;
+		-- hook once per recycled popup frame
+		local eb = dialog and (dialog.editBox or (dialog.GetName and _G[(dialog:GetName() or "") .. "EditBox"]))
+		if eb and AutoCompleteEditBox_OnTabPressed and not eb.hoTabHooked then
+			eb.hoTabHooked = true
+			eb:HookScript("OnTabPressed", function(self)
+				AutoCompleteEditBox_OnTabPressed(self)
+			end)
+		end
 	end)
 	win.addPallyBtn:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")

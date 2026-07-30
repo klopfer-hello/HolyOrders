@@ -173,6 +173,20 @@ local function ToggleExpandAll()
 	Window.Refresh()
 end
 
+-- the "+" popup runs outside the slash dispatcher's pcall, so errors there
+-- would vanish silently; protect and surface them the same way
+function Window.ExpectFromPopup(name)
+	name = name and name:match("^%s*(%S+)%s*$") -- trim; popup input may have stray spaces
+	if not name then
+		return
+	end
+	local ok, err = pcall(HO.commands["expect"], name)
+	if not ok then
+		HO.Log("error", "expect: " .. tostring(err))
+		HO.Print("error in 'expect' (logged): " .. tostring(err))
+	end
+end
+
 -- lane swap: first header click selects the source, the second swaps ----------
 
 local swapFrom = nil
@@ -703,18 +717,13 @@ function Window.Create()
 		hideOnEscape = true,
 		preferredIndex = 3, -- avoid tainting the default popup slots
 		OnAccept = function(self)
-			local name = self.editBox and self.editBox:GetText() or ""
-			if name ~= "" then
-				HO.commands["expect"](name)
-			end
+			Window.ExpectFromPopup(self.editBox and self.editBox:GetText())
 		end,
 		EditBoxOnEnterPressed = function(self)
 			local parent = self:GetParent()
-			local name = parent.editBox and parent.editBox:GetText() or ""
+			local name = parent.editBox and parent.editBox:GetText()
 			parent:Hide()
-			if name ~= "" then
-				HO.commands["expect"](name)
-			end
+			Window.ExpectFromPopup(name)
 		end,
 		EditBoxOnEscapePressed = function(self)
 			self:GetParent():Hide()

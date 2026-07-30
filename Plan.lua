@@ -460,11 +460,12 @@ function Plan.SwapPaladins(a, b)
 end
 
 -- an expected paladin joined: drop them from the list. If they run this addon
--- their own (usually empty) row broadcast overwrites the pre-plan — the owner
--- is authoritative by protocol — so capture the pre-planned row and re-assert
--- it shortly after as a normal permission-gated edit, but only onto a row
--- that is still empty by then: a paladin who arrives with own assignments is
--- respected, not clobbered.
+-- their own row broadcast overwrites the pre-plan (the owner is authoritative
+-- by protocol) — and what an arriving client broadcasts is nearly always the
+-- stale remainder of an older group, not intent. So the pre-planned row is
+-- captured and re-applied shortly after arrival as a normal permission-gated
+-- edit, replacing their announced row wholesale; edits made after joining win
+-- normally like anywhere else.
 local function HandleArrivals()
 	local expected = HO.db and HO.db.expected
 	if not expected or not next(expected) then
@@ -497,18 +498,28 @@ local function HandleArrivals()
 			if captured then
 				HO.Announce(real .. " arrived — holding their pre-planned assignments")
 				C_Timer.After(ARRIVAL_REASSERT_DELAY, function()
-					local current = Plan.Active().class[real]
-					for _, a in pairs(current or {}) do
-						if a.id then
-							return -- they brought or kept own assignments: respect them
-						end
-					end
+					-- the arriving client has announced its own row by now — in
+					-- practice stale leftovers from an older group, which must
+					-- not beat an explicit pre-plan: the pre-planned lane
+					-- replaces the row wholesale. Anything the owner (or anyone
+					-- permitted) edits AFTERWARDS wins normally.
 					local editor = HO.FullName("player")
 					if HO.Comm and editor and not HO.Comm.CanEdit(editor, real) then
-						return -- no permission to restore; their empty row stands
+						return -- no permission; their own row stands
 					end
 					for classToken, a in pairs(captured) do
 						Plan.SetClassAssignment(real, classToken, a.id, a.mode)
+					end
+					-- clear classes outside the pre-plan so the lane is exactly
+					-- what was planned, not a merge with their leftovers
+					local clear = {}
+					for classToken, a in pairs(Plan.Active().class[real] or {}) do
+						if a.id and not captured[classToken] then
+							clear[#clear + 1] = classToken
+						end
+					end
+					for _, classToken in ipairs(clear) do
+						Plan.SetClassAssignment(real, classToken, 0)
 					end
 					HO.Announce("pre-planned assignments applied for " .. real)
 					-- their capabilities are known by now (from their client's

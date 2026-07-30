@@ -497,15 +497,13 @@ local function HandleArrivals()
 			end
 			if captured then
 				HO.Announce(real .. " arrived — holding their pre-planned assignments")
-				C_Timer.After(ARRIVAL_REASSERT_DELAY, function()
-					-- the arriving client has announced its own row by now — in
-					-- practice stale leftovers from an older group, which must
-					-- not beat an explicit pre-plan: the pre-planned lane
-					-- replaces the row wholesale. Anything the owner (or anyone
-					-- permitted) edits AFTERWARDS wins normally.
+				-- replace the row wholesale with the pre-planned lane: what the
+				-- arriving client announced is in practice stale leftovers from
+				-- an older group. Returns false without permission.
+				local function ApplyCaptured()
 					local editor = HO.FullName("player")
 					if HO.Comm and editor and not HO.Comm.CanEdit(editor, real) then
-						return -- no permission; their own row stands
+						return false -- no permission; their own row stands
 					end
 					for classToken, a in pairs(captured) do
 						Plan.SetClassAssignment(real, classToken, a.id, a.mode)
@@ -521,7 +519,38 @@ local function HandleArrivals()
 					for _, classToken in ipairs(clear) do
 						Plan.SetClassAssignment(real, classToken, 0)
 					end
+					return true
+				end
+				-- does the row match the pre-planned lane exactly?
+				local function Matches()
+					local row = Plan.Active().class[real] or {}
+					for classToken, a in pairs(captured) do
+						local cur = row[classToken]
+						if not cur or cur.id ~= a.id then
+							return false
+						end
+					end
+					for classToken, cur in pairs(row) do
+						if cur.id and not captured[classToken] then
+							return false
+						end
+					end
+					return true
+				end
+				C_Timer.After(ARRIVAL_REASSERT_DELAY, function()
+					if not ApplyCaptured() then
+						return
+					end
 					HO.Announce("pre-planned assignments applied for " .. real)
+					-- verification pass: the join window is thick with row
+					-- broadcasts, and an in-flight stale copy serialized before
+					-- our edits can land after them and overwrite the lane
+					-- (owner rows apply unconditionally). One bounded retry.
+					C_Timer.After(ARRIVAL_REASSERT_DELAY, function()
+						if not Matches() and ApplyCaptured() then
+							HO.Announce("pre-planned assignments re-applied for " .. real .. " (a crossing update had overwritten them)")
+						end
+					end)
 					-- their capabilities are known by now (from their client's
 					-- greeting): warn loudly when the pre-plan does not fit —
 					-- e.g. Kings/Sanctuary pre-planned onto a build without the

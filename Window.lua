@@ -178,6 +178,8 @@ end
 function Window.ExpectFromPopup(name)
 	name = name and name:match("^%s*(%S+)%s*$") -- trim; popup input may have stray spaces
 	if not name then
+		-- never silent: an unreadable edit box or empty input must say so
+		HO.Print("no name entered — '/ho expect <name>' works too")
 		return
 	end
 	local ok, err = pcall(HO.commands["expect"], name)
@@ -717,13 +719,16 @@ function Window.Create()
 		hideOnEscape = true,
 		preferredIndex = 3, -- avoid tainting the default popup slots
 		OnAccept = function(self)
-			Window.ExpectFromPopup(self.editBox and self.editBox:GetText())
+			-- the editBox property is not guaranteed on this client: fall back
+			-- to resolving the child frame by its global name
+			local eb = self.editBox or (self.GetName and _G[(self:GetName() or "") .. "EditBox"])
+			Window.ExpectFromPopup(eb and eb:GetText())
 		end,
 		EditBoxOnEnterPressed = function(self)
-			local parent = self:GetParent()
-			local name = parent.editBox and parent.editBox:GetText()
-			parent:Hide()
-			Window.ExpectFromPopup(name)
+			-- self IS the edit box here; read it directly before hiding
+			local text = self:GetText()
+			self:GetParent():Hide()
+			Window.ExpectFromPopup(text)
 		end,
 		EditBoxOnEscapePressed = function(self)
 			self:GetParent():Hide()

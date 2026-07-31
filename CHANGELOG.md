@@ -4,6 +4,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) /
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Sync protocol
 bumps are called out — mismatched clients ignore each other's messages.
 
+## [0.34.0] - 2026-07-31
+
+### Added
+- `/ho peers` lists legacy blessing-addon clients and their free-assignment
+  state.
+
+### Fixed
+- A request already covered by someone's plan no longer shows as outstanding.
+- Solo-paladin auto blesses yourself talent-aware instead of self-Salvation.
+
 ## [0.33.0] - 2026-07-31
 
 ### Added

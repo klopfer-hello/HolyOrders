@@ -446,9 +446,32 @@ HO.commands["peers"] = function()
 			.. (tonumber(proto) and tonumber(HO.Comm.PROTO) and tonumber(proto) < tonumber(HO.Comm.PROTO)
 				and "they update" or "you update"))
 	end
+	-- legacy blessing-addon clients seen on their wire (bridge must be enabled)
+	local legacy = 0
+	if HO.Interop and HO.Interop.LegacyClients then
+		for _, c in ipairs(HO.Interop.LegacyClients()) do
+			legacy = legacy + 1
+			local fa
+			if c.freeassign == true then
+				fa = ", free assignment |cff40ff40ON|r"
+			elseif c.freeassign == false then
+				fa = ", free assignment |cffff4040OFF|r"
+			else
+				fa = ", free assignment unknown"
+			end
+			HO.PrintLine(c.name .. " — legacy blessing addon" .. (c.pally and "" or " (non-paladin)") .. fa)
+		end
+		if HO.Interop.Probe then
+			HO.Interop.Probe() -- freshens the state for the next call, silently
+		end
+	end
 	HO.Print(n .. " HolyOrders paladin(s) known"
 		.. (bad > 0 and (", " .. bad .. " incompatible") or "")
-		.. (n == 0 and bad == 0 and " — none seen yet (are they in your group?)" or ""))
+		.. (legacy > 0 and (", " .. legacy .. " legacy") or "")
+		.. (n == 0 and bad == 0 and legacy == 0 and " — none seen yet (are they in your group?)" or ""))
+	if legacy == 0 and HO.Interop and not HO.Interop.IsEnabled() then
+		HO.PrintLine("note: detecting legacy clients needs the legacy-broadcast option (Options > Group)")
+	end
 end
 
 HO.commands["openedit"] = function()

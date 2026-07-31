@@ -42,10 +42,30 @@ local enabled = false
 local prefixRegistered = false
 local broadcastTimer = nil
 
+-- passive presence registry for /ho peers: which group members speak the
+-- legacy wire at all, and whether their free-assignment option is on (they
+-- whisper that in reply to a pull). Diagnostic METADATA only — assignments
+-- are still never read. [fullName] = { pally, freeassign, t }
+local legacySeen = {}
+local lastProbe = 0
+local PROBE_THROTTLE = 30 -- seconds between pull requests we initiate
+
 -- helpers ---------------------------------------------------------------------
 
 local function ShortName(name)
 	return name and (name:match("^([^%-]+)") or name) or nil
+end
+
+-- same-realm senders may arrive without the realm suffix; the registry and
+-- the roster are keyed by full names
+local function QualifyName(name)
+	if not name or name == "" then
+		return nil
+	end
+	if not name:find("-", 1, true) then
+		return name .. "-" .. (GetNormalizedRealmName() or "")
+	end
+	return name
 end
 
 local function IsPaladin()
@@ -261,6 +281,20 @@ local function OnAddonMessage(prefix, message, channel, senderFull)
 		HO.Log("interop", "rx " .. (ShortName(senderFull) or "?") .. " " .. tostring(message):sub(1, 200))
 	end
 	local kind = message:match("^(%S+)")
+	-- presence registry: any message on this prefix marks the sender as a
+	-- legacy client; SELF marks a paladin; FREEASSIGN carries their setting
+	local senderName = QualifyName(senderFull)
+	if senderName then
+		local info = legacySeen[senderName] or {}
+		legacySeen[senderName] = info
+		info.t = GetTime()
+		if kind == "SELF" then
+			info.pally = true
+		elseif kind == "FREEASSIGN" then
+			info.pally = true
+			info.freeassign = message:find("FREEASSIGN YES", 1, true) ~= nil
+		end
+	end
 	if kind == "REQ" then
 		-- answer a whispered request privately, a broadcast request to the
 		-- group; a pull always re-emits (the requester may hold nothing yet)
@@ -327,6 +361,33 @@ function Interop.OnLocalPlanChanged(paladin)
 	end
 end
 
+-- known legacy clients in the group, sorted (for /ho peers)
+function Interop.LegacyClients()
+	local list = {}
+	for name, info in pairs(legacySeen) do
+		list[#list + 1] = { name = name, pally = info.pally, freeassign = info.freeassign }
+	end
+	table.sort(list, function(a, b)
+		return a.name < b.name
+	end)
+	return list
+end
+
+-- throttled pull request: legacy paladins whisper back their row AND their
+-- free-assignment state, which fills the presence registry. Returns true
+-- when a probe actually went out.
+function Interop.Probe()
+	if not enabled or not GroupChannel() then
+		return false
+	end
+	if GetTime() - lastProbe < PROBE_THROTTLE then
+		return false
+	end
+	lastProbe = GetTime()
+	Emit("REQ", GroupChannel())
+	return true
+end
+
 -- diagnostics: status flags plus the exact strings we would emit. For verifying
 -- the bridge against a live legacy client without reading its code.
 function Interop.Status()
@@ -366,10 +427,17 @@ HO.RegisterEvent("PLAYER_LOGIN", function()
 	if HO.db and HO.db.options.legacyBroadcast then
 		Interop.SetEnabled(true)
 	end
-	-- present-paladins changed → refresh what legacy clients see (debounced)
+	-- present-paladins changed → refresh what legacy clients see (debounced);
+	-- prune leavers from the presence registry and probe the newcomers
 	if HO.Roster and HO.Roster.OnChanged then
 		HO.Roster.OnChanged(function()
+			for name in pairs(legacySeen) do
+				if not HO.Roster.byName[name] then
+					legacySeen[name] = nil
+				end
+			end
 			ScheduleBroadcast()
+			Interop.Probe()
 		end)
 	end
 end)

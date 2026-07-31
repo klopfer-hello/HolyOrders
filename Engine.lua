@@ -67,6 +67,29 @@ local function PetIncluded(entry)
 end
 Engine.PetIncluded = PetIncluded
 
+-- is the requested blessing covered by ANY paladin's plan for this member?
+-- A wish someone is already assigned to fulfil is handled — keeping it marked
+-- outstanding on every other paladin's fly-out until the buff physically
+-- lands (and again whenever it expires) is noise. Overrides count always;
+-- a class row counts unless it is Salvation onto a tank, which the cast
+-- engine deliberately never delivers.
+local function PlanCoversRequest(plan, entry, reqID)
+	for pally, targets in pairs(plan.player) do
+		if targets[entry.name] == reqID and HO.Roster.byName[pally] then
+			return true
+		end
+	end
+	if entry.class and not (reqID == SALVATION and HO.Plan.IsTank(entry.name, entry.tankRole)) then
+		for pally, rows in pairs(plan.class) do
+			local a = rows[entry.class]
+			if a and a.id == reqID and HO.Roster.byName[pally] then
+				return true
+			end
+		end
+	end
+	return false
+end
+
 -- the deterministic pet-blessing split: every paladin covering the pet
 -- OWNER's class takes one slot of a ranked list (the configured pet blessing,
 -- then Kings, then Might — and Wisdom on pets that actually run on mana), so
@@ -258,7 +281,8 @@ function Engine.Update()
 					-- does the member already HAVE the requested blessing, from ANY
 					-- paladin? (feeds the fly-out badge tint; per-paladin comparisons
 					-- would mislead when someone else fulfils the wish)
-					requestSatisfied = (reqID and HasBlessing(entry.unit, reqID)) or nil,
+					requestSatisfied = (reqID and (HasBlessing(entry.unit, reqID)
+					or PlanCoversRequest(plan, entry, reqID))) or nil,
 				}
 				Engine.classMembers[poolClass] = Engine.classMembers[poolClass] or {}
 				table.insert(Engine.classMembers[poolClass], member)

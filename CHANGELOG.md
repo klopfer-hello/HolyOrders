@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-07-31
+
+Sync protocol stays v4 — compatible with 0.17.x–0.32.x.
+
+### Added
+- **`/ho pets`** shows, per pet, which paladin is supposed to cast which
+  blessing — with everyone's addon version. The multi-paladin pet stacking
+  (Kings + Might, Wisdom on mana pets) is computed on each paladin's own
+  client, so when everyone still casts Might on the pets, this command
+  identifies the outdated client immediately (stacking needs 0.27+).
+
+### Fixed
+- The **request window remembers its position** now — it was draggable but
+  re-centered on every session, unlike the assignment window and the bar.
+
 ## [0.32.0] - 2026-07-30
 
 Sync protocol stays v4 — compatible with 0.17.x–0.31.x.

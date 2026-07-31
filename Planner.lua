@@ -273,21 +273,25 @@ local function RunCore(pallys)
 	end
 
 	-- 1) blessing coverage: one blessing per paladin, deterministic
-	local assigned = {} -- [pallyName] = blessingID
-	if solo and not IsInGroup() then
-		-- truly alone: Salvation on yourself is pointless (threat reduction only
-		-- matters with a tank). Walk my own preference chain instead — talent-aware
-		-- via the own-spec fallback in ResolvePreference, so a holy build proposes
-		-- Wisdom, retribution Might, protection Kings; never Salvation.
-		local me = pallys[1]
+	-- talent-aware self blessing for a lone paladin — never Salvation on
+	-- yourself: the preference chain's own-spec fallback proposes Wisdom for
+	-- holy, Might for retribution, Kings for protection
+	local function AssignSelfBlessing(me)
 		local myEntry = HO.Roster.byName[me]
 		local isTank = (myEntry and IsTankEntry(plan, myEntry)) and true or false
 		for _, id in ipairs(Planner.ResolvePreference(me, "PALADIN", isTank)) do
 			if id ~= SALVATION and HO.Data.IsEligible("PALADIN", id, isTank) and Available(me, id) then
 				HO.Plan.SetClassAssignment(me, "PALADIN", id, "auto")
-				break
+				return
 			end
 		end
+	end
+
+	local assigned = {} -- [pallyName] = blessingID
+	if solo and not IsInGroup() then
+		-- truly alone: Salvation on yourself is pointless (threat reduction
+		-- only matters with a tank)
+		AssignSelfBlessing(pallys[1])
 	elseif solo then
 		-- solo paladin in a group, raid AND party alike: Salvation on everyone.
 		-- Tanks are protected by the step-2/3 rules (their classes fall to singles
@@ -373,6 +377,13 @@ local function RunCore(pallys)
 				HO.Plan.SetClassAssignment(pally, classToken, blessing, mode)
 			end
 		end
+	end
+
+	-- solo in a group: the PALADIN class is just the solo pally themselves, so
+	-- the blanket Salvation from step 2 is self-Salvation — replace it with
+	-- the same talent-aware self blessing the ungrouped case uses
+	if solo and IsInGroup() then
+		AssignSelfBlessing(pallys[1])
 	end
 
 	-- which blessings actually reach each class (from ALL paladins' rows)

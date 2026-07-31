@@ -119,9 +119,26 @@ local function Create()
 	frame:SetClampedToScreen(true)
 	frame:EnableMouse(true)
 	frame:RegisterForDrag("LeftButton")
+	-- position persists in SavedVariables like the assignment window's: the
+	-- client re-anchors a dragged frame to the nearest corner, so the full
+	-- anchor is saved (point + relPoint + offsets)
+	local function SavePos()
+		local point, _, relPoint, x, y = frame:GetPoint()
+		HO.db.options.request = HO.db.options.request or {}
+		HO.db.options.request.pos = { point = point, relPoint = relPoint, x = x, y = y }
+	end
 	frame:SetScript("OnDragStart", function() frame:StartMoving() end)
-	frame:SetScript("OnDragStop", function() frame:StopMovingOrSizing() end)
-	frame:SetPoint("CENTER")
+	frame:SetScript("OnDragStop", function()
+		frame:StopMovingOrSizing()
+		frame:SetUserPlaced(false) -- our SavedVariables own the position, not the layout cache
+		SavePos()
+	end)
+	local pos = HO.db.options.request and HO.db.options.request.pos
+	if pos and pos.point then
+		frame:SetPoint(pos.point, UIParent, pos.relPoint or pos.point, pos.x or 0, pos.y or 0)
+	else
+		frame:SetPoint("CENTER")
+	end
 	frame:Hide()
 	table.insert(UISpecialFrames, "HolyOrdersRequest") -- ESC closes it
 

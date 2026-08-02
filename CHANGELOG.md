@@ -4,6 +4,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) /
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Sync protocol
 bumps are called out — mismatched clients ignore each other's messages.
 
+## [0.35.0] - 2026-08-02
+
+### Added
+- Classes that join later are assigned automatically — every paladin row
+  extends its existing coverage, no manual Auto needed. Also fills the gaps
+  when you join a running group.
+
+### Fixed
+- Tanks get Light when the paladin has no Blessing of Kings.
+
 ## [0.34.0] - 2026-07-31
 
 ### Added

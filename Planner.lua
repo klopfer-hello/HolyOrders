@@ -569,6 +569,160 @@ local function RunCore(pallys)
 	return summary
 end
 
+-- extending an existing plan to classes that JOIN later ------------------------
+-- Pressing Auto is the only thing that ever wrote assignments, so a class
+-- arriving afterwards stayed blank until someone pressed it again. This keeps
+-- my own row in step: a class that is NEW to the roster inherits the coverage
+-- I already give the others. It never touches an existing assignment, never
+-- edits foreign rows (every paladin's client extends its own, so the result
+-- is the same everywhere without extra messages), and an explicit "none"
+-- marker counts as assigned — that stays the way to keep a class unbuffed.
+
+local knownClasses = nil -- nil until the first roster scan primes it
+local primeTimer = nil
+-- joining a running group (or logging in inside one) must fill the gaps too,
+-- not just later joiners — but not before the initial sync has landed, or we
+-- would plan against rows that are still arriving
+local PRIME_DELAY = 8
+
+-- the blessing this paladin covers classes with: the most common id in their
+-- row (lowest id wins a tie, so every client agrees). nil for an empty row.
+local function CoverageBlessing(rows)
+	local count = {}
+	for _, a in pairs(rows or {}) do
+		if a.id then
+			count[a.id] = (count[a.id] or 0) + 1
+		end
+	end
+	local best, bestCount
+	for id, n in pairs(count) do
+		if not bestCount or n > bestCount or (n == bestCount and id < best) then
+			best, bestCount = id, n
+		end
+	end
+	return best
+end
+
+local function PresentClassInfo()
+	local classes = {}
+	for _, entry in ipairs(HO.Roster.units) do
+		if not entry.isPet and entry.class and entry.name then
+			local info = classes[entry.class] or { members = 0, tanks = 0 }
+			classes[entry.class] = info
+			info.members = info.members + 1
+			if HO.Plan.IsTank(entry.name, entry.tankRole) then
+				info.tanks = info.tanks + 1
+			end
+		end
+	end
+	return classes
+end
+
+-- assign every present class that `previous` did not contain
+local function FillNew(previous)
+	local classes = PresentClassInfo()
+	local me = HO.FullName("player")
+	if not me then
+		return
+	end
+	local plan = HO.Plan.Active()
+	local noSalv = HO.Plan.NoSalvationActive() or HO.db.noSalvBy
+	local added, seenClass = {}, {}
+	-- EVERY paladin row we may edit, not just our own: a paladin without the
+	-- addon (or on an older version) never extends their own row, so their
+	-- duty for the joiner would stay blank. Each row's blessing is derived
+	-- from that row's own coverage, so two clients doing this concurrently
+	-- compute the same value and converge instead of fighting.
+	for _, pally in ipairs(HO.Roster.Paladins()) do
+		if not HO.Comm or HO.Comm.CanEdit(me, pally) then
+			local rows = plan.class[pally]
+			local coverage = CoverageBlessing(rows)
+			if coverage then -- nothing planned for them yet: Auto is the user's move
+				for classToken, info in pairs(classes) do
+					if not previous[classToken] and rows[classToken] == nil then
+						local allTanks = info.tanks >= info.members
+						local id = coverage
+						-- the same tank rules Auto applies: an all-tank class
+						-- never gets Salvation, and the blessing must be
+						-- castable for THAT paladin
+						if id == SALVATION and allTanks then
+							id = nil
+							for _, tankID in ipairs(TANK_CHAIN) do
+								if HO.Data.IsEligible(classToken, tankID, true) and Available(pally, tankID) then
+									id = tankID
+									break
+								end
+							end
+						end
+						if id and noSalv and id == SALVATION then
+							id = Planner.SalvSubstitute(pally, classToken, plan)
+						end
+						if id and not (HO.Data.IsEligible(classToken, id, allTanks) and Available(pally, id)) then
+							id = nil
+						end
+						if not id then
+							-- coverage does not fit: fall back to the class chain
+							for _, candidate in ipairs(Planner.ResolvePreference(nil, classToken, allTanks)) do
+								if HO.Data.IsEligible(classToken, candidate, allTanks) and Available(pally, candidate) then
+									id = candidate
+									break
+								end
+							end
+						end
+						if id then
+							HO.Plan.SetClassAssignment(pally, classToken, id, "auto")
+							if not seenClass[classToken] then
+								seenClass[classToken] = true
+								added[#added + 1] = classToken
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+	if #added > 0 then
+		table.sort(added)
+		HO.Log("planner", "extended coverage to " .. table.concat(added, ", "))
+		HO.Announce("new class in the group — assigned " .. table.concat(added, ", "))
+		if HO.Window and HO.Window.Refresh then
+			HO.Window.Refresh()
+		end
+		if HO.Bar and HO.Bar.Refresh then
+			HO.Bar.Refresh()
+		end
+	end
+end
+
+function Planner.ExtendCoverage()
+	if not HO.db or not HO.Roster.units then
+		return
+	end
+	local previous = knownClasses
+	knownClasses = {}
+	for classToken in pairs(PresentClassInfo()) do
+		knownClasses[classToken] = true
+	end
+	if not previous then
+		-- first scan of the session (login, reload, or the addon just loaded):
+		-- every present class counts as new once the initial sync has settled,
+		-- so joining a running group fills its gaps as well
+		if not primeTimer then
+			primeTimer = C_Timer.NewTimer(PRIME_DELAY, function()
+				primeTimer = nil
+				FillNew({})
+			end)
+		end
+		return
+	end
+	if primeTimer then
+		return -- still settling; the delayed pass covers everything present
+	end
+	FillNew(previous)
+end
+
+HO.Roster.OnChanged(Planner.ExtendCoverage)
+
 function Planner.Run()
 	-- a re-plan would assign Salvation again and desync the holder's snapshot:
 	-- the encounter mode must be reverted before auto is allowed to run

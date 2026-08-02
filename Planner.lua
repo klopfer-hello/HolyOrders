@@ -64,9 +64,17 @@ local function OwnSpecTag()
 	return OWN_TAB_SPECS[best]
 end
 
+-- what a tank should get, best first: Kings, then Light, then the stat
+-- blessings — every consumer filters by eligibility and what the caster
+-- actually knows, so a paladin without the Kings talent falls through to
+-- Light instead of holding an uncastable assignment
+local TANK_CHAIN = { KINGS, LIGHT, MIGHT, WISDOM }
+
 function Planner.ResolvePreference(name, classToken, isTank)
 	if isTank then
-		return { KINGS } -- tank protection beats any liking or request
+		-- tank protection beats any liking or request; castability filtering
+		-- happens downstream like for every other chain
+		return { KINGS, LIGHT }
 	end
 	local prefs = HO.db.prefs[classToken] or DEFAULT_PREFS[classToken]
 	local spec = name and HO.db.specCache[name]
@@ -369,7 +377,16 @@ local function RunCore(pallys)
 				local mode = "auto"
 				if blessing == SALVATION and info.tanks > 0 then
 					if info.tanks >= info.members then
-						blessing = KINGS -- class consists only of tanks
+						-- class consists only of tanks: first CASTABLE tank
+						-- blessing (a paladin without the Kings talent gives
+						-- Light instead of an uncastable Kings)
+						blessing = KINGS
+						for _, id in ipairs(TANK_CHAIN) do
+							if HO.Data.IsEligible(classToken, id, true) and Available(pally, id) then
+								blessing = id
+								break
+							end
+						end
 					else
 						mode = "normal" -- singles; the cast engine skips tanks
 					end
@@ -442,13 +459,18 @@ local function RunCore(pallys)
 		return (a.name or "") < (b.name or "")
 	end)
 
-	-- 3) tanks: if no Kings reaches their class, give them Kings singles
+	-- 3) tanks: if no proper tank blessing reaches their class, give them one
+	-- as a single — Kings preferred, Light when no caster knows Kings
 	for _, entry in ipairs(sortedUnits) do
 		if not entry.isPet and entry.name and IsTankEntry(plan, entry) then
-			if not ClassReceives(entry.class, KINGS) and not HasOverrideFor(plan, entry.name) then
-				local caster = NextCaster(KINGS, entry.class)
-				if caster then
-					AddAutoOverride(plan, caster, entry.name, KINGS)
+			if not ClassReceives(entry.class, KINGS) and not ClassReceives(entry.class, LIGHT)
+				and not HasOverrideFor(plan, entry.name) then
+				for _, id in ipairs(TANK_CHAIN) do
+					local caster = NextCaster(id, entry.class)
+					if caster then
+						AddAutoOverride(plan, caster, entry.name, id)
+						break
+					end
 				end
 			end
 		end

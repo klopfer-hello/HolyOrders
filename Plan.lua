@@ -293,11 +293,25 @@ function Plan.SetNoSalvation(enable)
 			return false, "no Salvation assignments to swap"
 		end
 		HO.db.salvSnapshot = Copy(plan)
+		-- the only member of a class: their requests and remembered liking can
+		-- decide that class's substitute, since nobody else receives it
+		local function LoneMember(classToken)
+			local found
+			for _, entry in ipairs(HO.Roster.units) do
+				if not entry.isPet and entry.class == classToken and entry.name then
+					if found then
+						return nil -- more than one member: no personal wish applies
+					end
+					found = entry.name
+				end
+			end
+			return found
+		end
 		local changed = 0
 		for pally, rows in pairs(plan.class) do
 			for classToken, a in pairs(rows) do
 				if a.id == SALVATION then
-					local sub = HO.Planner.SalvSubstitute(pally, classToken, plan)
+					local sub = HO.Planner.SalvSubstitute(pally, classToken, plan, LoneMember(classToken))
 					if sub then
 						a.id = sub
 					else
@@ -307,10 +321,14 @@ function Plan.SetNoSalvation(enable)
 				end
 			end
 		end
-		for _, targets in pairs(plan.player) do
+		for pally, targets in pairs(plan.player) do
 			for target, id in pairs(targets) do
 				if id == SALVATION then
-					targets[target] = nil
+					-- a per-member Salvation was dropped outright, leaving that
+					-- member unbuffed for the encounter; substitute by their own
+					-- wishes instead (nil only when nothing at all fits)
+					local entry = HO.Roster.byName[target]
+					targets[target] = HO.Planner.SalvSubstitute(pally, entry and entry.class, plan, target)
 					changed = changed + 1
 				end
 			end

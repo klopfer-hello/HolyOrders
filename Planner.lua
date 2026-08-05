@@ -156,7 +156,11 @@ end
 -- substitute for a Salvation class assignment while no-Salvation mode is on:
 -- class preference first, then Light/Kings/Wisdom/Might, skipping blessings
 -- the class already receives from another paladin
-function Planner.SalvSubstitute(pally, classToken, plan)
+-- what replaces a Salvation assignment while no-Salvation mode runs. `target`
+-- names the member when the assignment is about one person (a per-member
+-- override, or a class with a single member present) — their own wishes then
+-- decide, which is the whole point of a request.
+function Planner.SalvSubstitute(pally, classToken, plan, target)
 	local received = {}
 	for otherPally, rows in pairs(plan.class) do
 		if otherPally ~= pally then
@@ -167,17 +171,19 @@ function Planner.SalvSubstitute(pally, classToken, plan)
 			end
 		end
 	end
-	-- candidate order decides what replaces Salvation: the class's preference
-	-- chain first (a user copy, then the shipped one — it ranks the right stat
-	-- blessing per class), Kings as the universal filler, and Light strictly
-	-- LAST. Light is the weakest still-useful blessing, so it must only appear
-	-- once every stronger option is already covered by another paladin.
+	-- candidate order decides what replaces Salvation. ResolvePreference
+	-- supplies the member's ranked requests and their remembered per-character
+	-- liking ahead of the class chain, so a wish is honoured here exactly like
+	-- in normal planning — only Salvation itself is skipped. Kings is the
+	-- universal filler and Light strictly LAST: it is the weakest still-useful
+	-- blessing and must only appear once everything stronger is covered.
 	local candidates = {}
 	local function append(list)
 		for _, id in ipairs(list or {}) do
 			table.insert(candidates, id)
 		end
 	end
+	append(Planner.ResolvePreference(target, classToken, false))
 	local userPrefs = HO.db.prefs[classToken]
 	append(userPrefs and userPrefs.default)
 	local shipped = DEFAULT_PREFS[classToken]
@@ -661,9 +667,13 @@ local function FillNew(previous)
 							id = nil
 						end
 						if not id then
-							-- coverage does not fit: fall back to the class chain
+							-- coverage does not fit: fall back to the class chain,
+							-- which contains Salvation for most classes — while
+							-- the mode runs it must not sneak back in through a
+							-- joiner
 							for _, candidate in ipairs(Planner.ResolvePreference(nil, classToken, allTanks)) do
-								if HO.Data.IsEligible(classToken, candidate, allTanks) and Available(pally, candidate) then
+								if not (noSalv and candidate == SALVATION)
+									and HO.Data.IsEligible(classToken, candidate, allTanks) and Available(pally, candidate) then
 									id = candidate
 									break
 								end

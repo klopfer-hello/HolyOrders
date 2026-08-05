@@ -85,6 +85,7 @@ local CLASS_ORDER = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN
 
 local bar, handle, ticker
 local auraButton -- dedicated self-cast aura slot at the origin end (next to the handle)
+local selfBuffButton -- protection only: the threat self-buff, right after the aura slot
 local buttons = {}
 local lastGrow
 local pendingReset
@@ -106,10 +107,26 @@ local function PlaceAtOffset(frame, offset)
 	end
 end
 
--- place a class button into the nth visible slot (slot 0 is the aura button).
--- Buttons are class-fixed, so the visible set is compacted here per refresh.
+-- protection paladins get the threat self-buff slot; everyone else does not
+local function SelfBuffRelevant()
+	if select(2, UnitClass("player")) ~= "PALADIN" then
+		return false
+	end
+	if not (HO.Data.selfBuff and HO.Data.selfBuff.known) then
+		return false
+	end
+	return HO.Planner and HO.Planner.OwnSpec and HO.Planner.OwnSpec() == "protection"
+end
+
+-- place a class button into the nth visible slot (slot 0 is the aura button,
+-- slot 1 the self-buff button when a protection paladin shows it). Buttons are
+-- class-fixed, so the visible set is compacted here per refresh.
+local function SlotOffset()
+	return SelfBuffRelevant() and 1 or 0
+end
+
 local function PlaceButtonInSlot(btn, slot)
-	PlaceAtOffset(btn, HandleAlong() + GAP + slot * (BUTTON_SIZE + GAP))
+	PlaceAtOffset(btn, HandleAlong() + GAP + (slot + SlotOffset()) * (BUTTON_SIZE + GAP))
 end
 
 -- arranges the frame, handle and aura slot for the configured growth direction;
@@ -118,8 +135,9 @@ local function LayoutBar()
 	local skin = HO.Skin.current
 	local grow = EffectiveGrow()
 	local horizontal = (grow == "left" or grow == "right")
-	-- +1 slot for the always-present aura button that sits at the origin end
-	local length = HandleAlong() + GAP + (MAX_BUTTONS + 1) * (BUTTON_SIZE + GAP)
+	-- +2 slots at the origin end: the always-present aura button and the
+	-- protection self-buff slot (reserved so the bar never resizes in combat)
+	local length = HandleAlong() + GAP + (MAX_BUTTONS + 2) * (BUTTON_SIZE + GAP)
 	local cross = ButtonCross() + 4
 	if horizontal then
 		bar:SetSize(length, cross)
@@ -173,6 +191,9 @@ local function LayoutBar()
 	-- class buttons follow, compacted into slots 1..n by the refresh
 	if auraButton then
 		PlaceAtOffset(auraButton, HandleAlong() + GAP)
+	end
+	if selfBuffButton then
+		PlaceAtOffset(selfBuffButton, HandleAlong() + GAP + (BUTTON_SIZE + GAP))
 	end
 	lastGrow = HO.db.options.bar and HO.db.options.bar.grow or "right"
 end
@@ -1102,6 +1123,87 @@ local function PlayerHasAura(auraName)
 	return false
 end
 
+-- the protection threat self-buff slot: a plain self-cast button whose icon is
+-- bright while the buff is up and greyed out while it is missing — the whole
+-- point is noticing a dropped Righteous Fury at a glance
+local function CreateSelfBuffButton()
+	local btn = CreateFrame("Button", "HolyOrdersBarSelfBuff", bar, "SecureActionButtonTemplate")
+	btn:SetSize(ButtonCross(), BUTTON_SIZE)
+	btn:RegisterForClicks("AnyDown", "AnyUp")
+	-- always the same self-cast; spell1 is written out of combat in the refresh
+	btn:SetAttribute("type1", "spell")
+	btn:SetAttribute("unit1", "player")
+	btn.hoSelfBuffButton = true
+
+	btn.bg = btn:CreateTexture(nil, "BACKGROUND")
+	btn.bg:SetAllPoints()
+	btn.bg:SetTexture(WHITE8)
+	btn.bg:SetVertexColor(0.30, 0.10, 0.10, 0.85) -- red tint: threat, not a blessing
+	HO.Skin.MaskIcon(btn.bg)
+
+	if HO.Skin.WideBar() then
+		btn.icon = btn:CreateTexture(nil, "ARTWORK")
+		btn.icon:SetSize(26, 26)
+		btn.icon:SetPoint("LEFT", 4, 0)
+		btn.label = btn:CreateFontString(nil, "OVERLAY", "HolyOrdersFontNormalSmall")
+		btn.label:SetPoint("RIGHT", -7, 0)
+	else
+		btn.icon = btn:CreateTexture(nil, "ARTWORK")
+		btn.icon:SetPoint("TOPLEFT", 2, -2)
+		btn.icon:SetPoint("BOTTOMRIGHT", -2, 2)
+		btn.label = btn:CreateFontString(nil, "OVERLAY", "HolyOrdersFontNormalSmall")
+		btn.label:SetPoint("BOTTOM", btn, "BOTTOM", 0, 1)
+		btn.label:SetDrawLayer("OVERLAY", 3)
+	end
+	HO.Skin.MaskIcon(btn.icon)
+	btn.label:SetText(L["Fury"])
+
+	btn.frame = btn:CreateTexture(nil, "OVERLAY", nil, 1)
+	btn.frame:SetPoint("TOPLEFT", -1, 1)
+	btn.frame:SetPoint("BOTTOMRIGHT", 1, -1)
+	btn.frame:SetTexture(HO.Skin.IconFrame())
+
+	btn:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:SetText(HO.Data.selfBuff.name or L["Fury"])
+		if PlayerHasAura(HO.Data.selfBuff.name) then
+			GameTooltip:AddLine(L["active"], 0.4, 1, 0.4)
+		else
+			GameTooltip:AddLine(L["MISSING — click to cast"], 1, 0.4, 0.4)
+		end
+		GameTooltip:Show()
+	end)
+	btn:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
+	return btn
+end
+
+-- self-buff visuals: green ring while it is up, red while missing. Texture
+-- work is not protected, so the state stays live in combat too; only the
+-- secure spell attribute is written out of combat.
+local function RefreshSelfBuffButton()
+	if not selfBuffButton then
+		return
+	end
+	local buff = HO.Data.selfBuff
+	if not SelfBuffRelevant() then
+		if not InCombatLockdown() then
+			selfBuffButton:Hide()
+		end
+		return
+	end
+	local up = PlayerHasAura(buff.name)
+	selfBuffButton.icon:SetTexture(buff.icon)
+	selfBuffButton.icon:SetDesaturated(not up)
+	selfBuffButton.icon:SetAlpha(up and 1 or 0.45)
+	selfBuffButton.frame:SetVertexColor(up and HO.Colors.rgb("green", 1) or HO.Colors.rgb("red", 1))
+	if not InCombatLockdown() then
+		selfBuffButton:SetAttribute("spell1", buff.name)
+		selfBuffButton:Show()
+	end
+end
+
 -- aura-button visuals + secure self-cast attribute. The attribute is written
 -- only out of combat; the combat branch refreshes the icon alone. The icon is
 -- greyed out (desaturated + dimmed) when the assigned aura is NOT active, so a
@@ -1246,6 +1348,8 @@ function Bar.Create()
 		end
 	end
 	auraButton = CreateAuraButton() -- always present; follows the bar's visibility
+	selfBuffButton = CreateSelfBuffButton() -- protection only; hidden otherwise
+	selfBuffButton:Hide()
 	-- keep the golden handle as the topmost element of the bar (above the buttons)
 	-- so it stays visible and grabbable when the bar is raised over other windows
 	handle:SetFrameLevel((bar:GetFrameLevel() or 1) + 10)
@@ -1340,6 +1444,7 @@ function Bar.Refresh()
 			end
 		end
 		RefreshAuraButton() -- icon only in combat; never touches attributes
+		RefreshSelfBuffButton() -- same: live icon/ring, no attribute writes
 		-- fly-out panels stay usable in combat (secure snippets show/hide them);
 		-- their layout/attributes are frozen, but the VISUALS of shown rows are
 		-- plain textures/fontstrings — keep those tracking reality
@@ -1486,12 +1591,15 @@ function Bar.Refresh()
 	end
 
 	RefreshAuraButton()
+	RefreshSelfBuffButton()
 	local isPally = select(2, UnitClass("player")) == "PALADIN"
 	-- the aura slot is always relevant to a paladin, so the bar shows when there
 	-- are duties OR an aura is assigned (so the aura button is reachable to wheel)
 	local me = HO.FullName("player")
 	local hasAura = me and HO.Plan.GetAura(me)
-	if isPally and not BarOptions().hidden and (shown > 0 or hasAura) then
+	-- the self-buff slot keeps the bar reachable too, so a protection paladin
+	-- without duties still sees their threat buff status
+	if isPally and not BarOptions().hidden and (shown > 0 or hasAura or SelfBuffRelevant()) then
 		bar:Show()
 		auraButton:Show()
 	else

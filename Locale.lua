@@ -138,6 +138,10 @@ L["assignment changes apply after combat"] = "Zuteilungsänderungen werden nach 
 
 -- paladin aura
 L["Aura"] = "Aura"
+-- the protection threat self-buff slot on the cast bar
+L["Fury"] = "Zorn"
+L["active"] = "aktiv"
+L["MISSING — click to cast"] = "FEHLT — klicken zum Wirken"
 L["My Aura"] = "Meine Aura"
 L["no aura assigned"] = "Keine Aura zugewiesen"
 L["mouse wheel: change your aura"] = "Mausrad: deine Aura wechseln"

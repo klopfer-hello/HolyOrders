@@ -64,6 +64,13 @@ local function OwnSpecTag()
 	return OWN_TAB_SPECS[best]
 end
 
+-- my own spec for consumers outside the planner: a hand-set (or synced) tag
+-- wins, talent inference fills in — the same order ResolvePreference uses
+function Planner.OwnSpec()
+	local me = HO.FullName("player")
+	return (me and HO.db.specCache[me]) or OwnSpecTag()
+end
+
 -- what a tank should get, best first: Kings, then Light, then the stat
 -- blessings — every consumer filters by eligibility and what the caster
 -- actually knows, so a paladin without the Kings talent falls through to

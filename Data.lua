@@ -34,6 +34,10 @@ Data.auras = {
 }
 Data.NUM_AURAS = #Data.auras
 
+-- Righteous Fury: the protection paladin's threat self-buff. Not a blessing
+-- and not an aura — it is only ever cast on yourself, so it lives on its own.
+Data.selfBuff = { base = 25780 }
+
 Data.SYMBOL_OF_KINGS = 21177 -- reagent for greater blessings
 
 -- eligibility (SPEC-planner §2); manual per-member overrides may bypass this
@@ -107,6 +111,10 @@ function Data.RefreshAuras()
 		aura.name, aura.icon = name, icon
 		aura.known = (name and book[name]) ~= nil
 	end
+	-- the protection threat self-buff, resolved the same locale-safe way
+	local name, _, icon = GetSpellInfo(Data.selfBuff.base)
+	Data.selfBuff.name, Data.selfBuff.icon = name, icon
+	Data.selfBuff.known = (name and book[name]) ~= nil
 end
 
 -- ids of known auras in id order (mirrors the blessing helpers)

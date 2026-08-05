@@ -4,6 +4,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) /
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Sync protocol
 bumps are called out — mismatched clients ignore each other's messages.
 
+## [0.36.0] - 2026-08-05
+
+### Changed
+- No-Salvation substitutes follow the member's requests and remembered
+  likings (Salvation itself skipped) instead of a generic class default.
+
+### Fixed
+- A per-member Salvation assignment is now substituted instead of dropped —
+  that member used to end up with no blessing for the encounter.
+- A class joining during No-Salvation mode can no longer be assigned
+  Salvation.
+
 ## [0.35.0] - 2026-08-02
 
 ### Added

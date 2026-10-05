@@ -87,6 +87,7 @@ local NONE_ICON = "Interface\\Buttons\\UI-GroupLoot-Pass-Up" -- "no aura" placeh
 local CLASS_ORDER = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
 
 local bar, handle, ticker
+local barMoving = false -- a Ctrl-drag on the handle has started moving the bar
 local auraButton -- dedicated self-cast aura slot at the origin end (next to the handle)
 local selfBuffButton -- protection only: the threat self-buff, right after the aura slot
 local buttons = {}
@@ -1334,15 +1335,18 @@ function Bar.Create()
 		-- hold Ctrl to move; prevents accidental drags without a lock toggle
 		if IsControlKeyDown() then
 			handleDragging = true
+			barMoving = true
 			bar:StartMoving()
 		end
 	end)
 	handle:SetScript("OnDragStop", function()
-		-- ALWAYS stop the drag, even in combat: skipping this leaves the bar glued
-		-- to the cursor (it eats every click). Only the position SAVE (a SetPoint on
-		-- a frame with secure children) is unsafe in combat, so guard just that.
-		bar:StopMovingOrSizing()
-		if not InCombatLockdown() then
+		-- stop only a move that actually started: a drag attempted in combat (or
+		-- without Ctrl) never moved the bar, and the modern client blocks
+		-- StopMovingOrSizing on this protected frame in combat. A move running
+		-- into combat was already ended by PLAYER_REGEN_DISABLED.
+		if barMoving and not InCombatLockdown() then
+			barMoving = false
+			bar:StopMovingOrSizing()
 			SavePosition()
 		end
 		C_Timer.After(0.1, function()
@@ -1724,6 +1728,12 @@ end
 
 HO.RegisterEvent("PLAYER_LOGIN", Bar.Init)
 HO.RegisterEvent("PLAYER_REGEN_ENABLED", function()
+	-- safety net: a move still running after combat ends here and is saved
+	if bar and barMoving then
+		barMoving = false
+		bar:StopMovingOrSizing()
+		SavePosition()
+	end
 	if pendingReset then
 		pendingReset = nil
 		Bar.ResetPosition()
@@ -1737,7 +1747,9 @@ HO.RegisterEvent("PLAYER_REGEN_DISABLED", function()
 	-- opening/closing them during combat with their pre-baked rows.
 	-- End any in-progress bar drag so it can't keep following the cursor into
 	-- combat (where OnDragStop would otherwise be unable to persist the move)
-	if bar then
+	-- (the event fires before the lockdown starts, so the call is still allowed)
+	if bar and barMoving then
+		barMoving = false
 		bar:StopMovingOrSizing()
 	end
 end)

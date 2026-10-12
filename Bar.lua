@@ -152,7 +152,6 @@ end
 -- arranges the frame, handle and aura slot for the configured growth direction;
 -- must only run out of combat (buttons are protected frames)
 local function LayoutBar()
-	local skin = HO.Skin.current
 	local grow = EffectiveGrow()
 	local horizontal = (grow == "left" or grow == "right")
 	-- +2 slots at the origin end: the always-present aura button and the

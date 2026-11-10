@@ -178,8 +178,8 @@ end
 -- the "+" popup runs outside the slash dispatcher's pcall, so errors there
 -- would vanish silently; protect and surface them the same way
 function Window.ExpectFromPopup(name)
-	name = name and name:match("^%s*(%S+)%s*$") -- trim; popup input may have stray spaces
-	if not name then
+	name = name and name:match("^%s*(.-)%s*$") -- trim; popup input may have stray spaces
+	if not name or name == "" then
 		-- never silent: an unreadable edit box or empty input must say so
 		HO.Print("no name entered — '/ho expect <name>' works too")
 		return

@@ -492,8 +492,8 @@ HO.commands["trace"] = function()
 end
 
 HO.commands["getlog"] = function(rest)
-	local target = rest:match("^(%S+)$")
-	if not target then
+	local target = rest:match("^%s*(.-)%s*$")
+	if target == "" then
 		HO.Print("usage: /ho getlog <playerName> — pulls their recent HolyOrders log into your SavedVariables")
 		return
 	end
@@ -569,7 +569,11 @@ HO.commands["expect"] = function(rest)
 		HO.Window.Refresh()
 		return
 	end
-	name = name:gsub("^%l", string.upper):gsub("%s+%l", string.upper)
+	name = name:gsub("^%l", string.upper):gsub("[%s%-]+%l", string.upper)
+	if HO.Compat.HAS_SURNAMES and not name:find("[%s%-]") then
+		HO.Print("please give the first name and the surname: /ho expect <first name> <surname>")
+		return
+	end
 	name = HO.SenderName(name)
 	if HO.Roster.byName[name] then
 		HO.Print(name .. " is already in the group — assign them normally")
@@ -632,12 +636,21 @@ HO.commands["auto"] = function()
 end
 
 HO.commands["spec"] = function(rest)
-	local target, spec = rest:match("^(%S+)%s*(%S*)$")
-	if not target then
+	local whole = rest:match("^%s*(.-)%s*$")
+	if whole == "" then
 		HO.Print("usage: /ho spec <playerName> [<spec>|clear] — tags a member's spec for the planner")
 		return
 	end
+	-- the name may have a surname: the whole input is a name when it names a
+	-- member, otherwise its last word is the spec
+	local target, spec = whole, ""
 	local entry
+	if not HO.Roster.Resolve(whole) then
+		target, spec = whole:match("^(.-)%s+(%S+)$")
+		if not target then
+			target, spec = whole, ""
+		end
+	end
 	target, entry = HO.Roster.Resolve(target)
 	if not entry then
 		HO.Print("target is not in the roster")
@@ -654,6 +667,9 @@ HO.commands["spec"] = function(rest)
 			HO.db.specManual[target] = nil -- back to auto-inference
 		end
 		HO.Print(target .. " spec tag cleared")
+		if HO.Comm then
+			HO.Comm.SendSpecTag(target, HO.Comm.SPEC_CLEARED)
+		end
 	else
 		-- "other"/"dps" is a durable NOT-any-special-spec tag (e.g. a dps warrior),
 		-- there to overrule a bad auto-inference like a false "protection"
@@ -683,8 +699,8 @@ HO.commands["spec"] = function(rest)
 end
 
 HO.commands["tank"] = function(rest)
-	local target = rest:match("^(%S+)$")
-	if not target then
+	local target = rest:match("^%s*(.-)%s*$")
+	if target == "" then
 		HO.Print("usage: /ho tank <playerName>  (toggles the tank flag)")
 		return
 	end

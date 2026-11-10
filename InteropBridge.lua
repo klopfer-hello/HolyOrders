@@ -167,16 +167,30 @@ end
 
 -- every paladin whose row we hold and who is still in the roster, sorted; the
 -- own row is listed too (SELF carries it for paladin senders, the push covers
--- the coordinator-on-another-class case where there is no own row anyway)
+-- the coordinator-on-another-class case where there is no own row anyway).
+-- A paladin holding only per-member overrides counts as well; hasRow tells
+-- whether there is a class row to push (never push an empty grid for someone
+-- we planned no classes for: it would wipe their own choices)
 local function HeldOwners()
-	local owners = {}
-	for owner in pairs(HO.Plan.Active().class) do
-		if HO.Roster.byName and HO.Roster.byName[owner] then
+	local plan = HO.Plan.Active()
+	local owners, hasRow, seen = {}, {}, {}
+	local function add(owner)
+		if not seen[owner] and HO.Roster.byName and HO.Roster.byName[owner] then
+			seen[owner] = true
 			owners[#owners + 1] = owner
 		end
 	end
+	for owner in pairs(plan.class) do
+		add(owner)
+		hasRow[owner] = true
+	end
+	for owner, targets in pairs(plan.player) do
+		if next(targets) then
+			add(owner)
+		end
+	end
 	table.sort(owners)
-	return owners
+	return owners, hasRow
 end
 
 -- broadcast -------------------------------------------------------------------
@@ -211,8 +225,9 @@ local function Broadcast(target, force)
 		parts[#parts + 1] = "ASELF " .. EncodeAuraCaps() .. "@" .. AuraNumber(me)
 	end
 	local entries = {}
-	for _, owner in ipairs(HeldOwners()) do
-		if owner ~= me then
+	local owners, hasRow = HeldOwners()
+	for _, owner in ipairs(owners) do
+		if owner ~= me and hasRow[owner] then
 			parts[#parts + 1] = "PASSIGN " .. (ShortName(owner) or "?") .. "@" .. EncodeGrid(owner)
 			-- aura pushes share the row-push acceptance rule (lead/assist or
 			-- their free-assignment); only recorded auras are pushed — never a
@@ -267,7 +282,14 @@ local function OnAddonMessage(prefix, message, channel, senderFull)
 		return
 	end
 	-- ignore our own echoes
-	if QualifyName(senderFull) == HO.FullName("player") then
+	local senderName = QualifyName(senderFull)
+	if senderName == HO.FullName("player") then
+		return
+	end
+	-- another HolyOrders client with the bridge on is no legacy client: its
+	-- messages are copies of a plan we already share. Answering them made two
+	-- bridges trigger each other's re-push without end.
+	if senderName and HO.Comm.peers[senderName] then
 		return
 	end
 	-- with debug logging on, record what legacy clients actually send on the wire,
@@ -278,7 +300,6 @@ local function OnAddonMessage(prefix, message, channel, senderFull)
 	local kind = message:match("^(%S+)")
 	-- presence registry: any message on this prefix marks the sender as a
 	-- legacy client; SELF marks a paladin; FREEASSIGN carries their setting
-	local senderName = QualifyName(senderFull)
 	if senderName then
 		local info = legacySeen[senderName] or {}
 		legacySeen[senderName] = info
@@ -306,10 +327,9 @@ local function OnAddonMessage(prefix, message, channel, senderFull)
 		-- unchanged would leave the plan dead until an unrelated local edit.
 		-- Debounced, and no loop: the legacy client does not answer a push
 		-- with another announcement.
-		local senderShort = ShortName(senderFull)
-		if senderShort then
+		if senderName then
 			for _, owner in ipairs(HeldOwners()) do
-				if ShortName(owner) == senderShort then
+				if owner == senderName then
 					ScheduleBroadcast(true)
 					break
 				end
@@ -388,8 +408,9 @@ end
 function Interop.Status()
 	local me = HO.FullName("player")
 	local pushes, overrides = {}, {}
-	for _, owner in ipairs(HeldOwners()) do
-		if owner ~= me then
+	local owners, hasRow = HeldOwners()
+	for _, owner in ipairs(owners) do
+		if owner ~= me and hasRow[owner] then
 			pushes[#pushes + 1] = "PASSIGN " .. (ShortName(owner) or "?") .. "@" .. EncodeGrid(owner)
 		end
 		for _, e in ipairs(OverrideEntries(owner)) do

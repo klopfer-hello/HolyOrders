@@ -119,6 +119,25 @@ function HO.FullName(unit)
 	return name .. "-" .. (GetNormalizedRealmName() or "")
 end
 
+-- turn a chat/addon-message sender into the same key HO.FullName builds.
+-- Classic: same-realm senders arrive bare ("Name"), so add our realm.
+-- WoW Forever: characters have a surname; UnitName returns it in the realm
+-- slot (HO.FullName -> "First-Surname"), but chat senders arrive as
+-- "First Surname" (a space, maybe with a realm appended) -> "First-Surname"
+function HO.SenderName(sender)
+	if type(sender) ~= "string" or sender == "" then
+		return nil
+	end
+	local first, surname = sender:match("^([^%s%-]+)%s+([^%s%-]+)")
+	if first then
+		return first .. "-" .. surname
+	end
+	if not sender:find("-", 1, true) then
+		return sender .. "-" .. (GetNormalizedRealmName() or "")
+	end
+	return sender
+end
+
 -- slash commands -------------------------------------------------------------
 
 local commands = {}

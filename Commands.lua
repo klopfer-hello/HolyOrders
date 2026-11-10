@@ -547,7 +547,8 @@ end
 -- pre-planning: /ho expect <name> toggles a paladin who has not joined yet;
 -- their window column appears immediately and can be assigned like any other
 HO.commands["expect"] = function(rest)
-	local name = rest:match("^(%S+)$")
+	-- one word, or "First Surname" on WoW Forever
+	local name = rest:match("^%s*(%S+)%s*$") or rest:match("^%s*(%S+%s+%S+)%s*$")
 	if not name then
 		local list = HO.Plan.Expected()
 		if #list == 0 then
@@ -564,10 +565,8 @@ HO.commands["expect"] = function(rest)
 		HO.Window.Refresh()
 		return
 	end
-	name = name:gsub("^%l", string.upper)
-	if not name:find("-", 1, true) then
-		name = name .. "-" .. (GetNormalizedRealmName() or "")
-	end
+	name = name:gsub("^%l", string.upper):gsub("%s+%l", string.upper)
+	name = HO.SenderName(name)
 	if HO.Roster.byName[name] then
 		HO.Print(name .. " is already in the group — assign them normally")
 		return

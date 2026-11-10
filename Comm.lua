@@ -34,6 +34,10 @@ Comm.specSync = {} -- [fullName] = spec tag, synced overlay (session only, not s
 Comm.requests = {} -- [fullName] = { blessingID, ... } ordered priority list; own reflected too; never saved
 
 local me -- own full name, set on login
+-- [fullName] = the sender string exactly as the client delivered it: whisper
+-- replies go there, since a rebuilt "Name-Realm" is not a valid whisper
+-- target on WoW Forever
+local whisperTarget = {}
 -- incoming PLANAPPLY buffers, one per sender ({ rows={}, tanks={} }, applied
 -- atomically at PE): two leads broadcasting at once must not clobber each other
 local planBuffers = {}
@@ -165,6 +169,14 @@ local function Send(msg, channel, target)
 	channel = channel or Channel()
 	if not channel then
 		return
+	end
+	if channel == "WHISPER" and target then
+		-- unknown sender (e.g. our own name): drop our own realm suffix, a bare
+		-- same-realm name is a valid whisper target on every client
+		local realmSuffix = "-" .. (GetNormalizedRealmName() or "")
+		target = whisperTarget[target]
+			or (target:sub(-#realmSuffix) == realmSuffix and target:sub(1, -#realmSuffix - 1))
+			or target
 	end
 	if HO.db and HO.db.options.trace then
 		HO.Log("tx", channel .. (target and ("/" .. target) or "") .. " " .. msg:sub(1, 120))
@@ -1262,12 +1274,12 @@ HO.RegisterEvent("CHAT_MSG_ADDON", function(prefix, message, channel, senderFull
 	if prefix ~= PREFIX or not me then
 		return -- not ours, or before login init
 	end
-	-- the classic client delivers same-realm senders WITHOUT the realm suffix;
-	-- peers, plan rows and the roster are all keyed by full "Name-Realm" names,
-	-- so qualify bare senders with our own realm (cross-realm senders carry theirs)
-	local sender = senderFull
-	if sender and not sender:find("-", 1, true) then
-		sender = sender .. "-" .. (GetNormalizedRealmName() or "")
+	-- peers, plan rows and the roster are all keyed by HO.FullName names, but
+	-- senders arrive realm-less (classic) or as "First Surname" (Forever);
+	-- normalise so lookups, the own-echo check and whisper replies all work
+	local sender = HO.SenderName(senderFull)
+	if sender then
+		whisperTarget[sender] = senderFull
 	end
 	local proto, msgType, payload = message:match("^(%d+):(%u+):?(.*)$")
 	if proto ~= PROTO then

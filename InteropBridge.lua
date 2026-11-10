@@ -56,16 +56,10 @@ local function ShortName(name)
 	return name and (name:match("^([^%-]+)") or name) or nil
 end
 
--- same-realm senders may arrive without the realm suffix; the registry and
--- the roster are keyed by full names
+-- senders arrive realm-less or as "First Surname" (Forever); the registry and
+-- the roster are keyed by HO.FullName names
 local function QualifyName(name)
-	if not name or name == "" then
-		return nil
-	end
-	if not name:find("-", 1, true) then
-		return name .. "-" .. (GetNormalizedRealmName() or "")
-	end
-	return name
+	return HO.SenderName(name)
 end
 
 local function IsPaladin()
@@ -272,7 +266,7 @@ local function OnAddonMessage(prefix, message, channel, senderFull)
 		return
 	end
 	-- ignore our own echoes
-	if ShortName(senderFull) == ShortName(HO.FullName("player") or "") then
+	if QualifyName(senderFull) == HO.FullName("player") then
 		return
 	end
 	-- with debug logging on, record what legacy clients actually send on the wire,

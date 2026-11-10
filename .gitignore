@@ -2,3 +2,5 @@
 docs/
 CLAUDE.md
 dist/
+__pycache__/
+.pytest_cache/

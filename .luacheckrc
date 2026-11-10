@@ -2,7 +2,7 @@
 std = "lua51"
 max_line_length = false
 codes = true
-exclude_files = { "Libs/", "dist/", ".git/" }
+exclude_files = { "Libs/", "dist/", ".git/", "tests/" }
 
 ignore = {
 	"212",   -- unused arguments: event/comm callbacks keep their full signature

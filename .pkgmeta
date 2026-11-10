@@ -14,6 +14,7 @@ ignore:
   - media
   - scripts
   - dist
+  - tests
 
 manual-changelog:
   filename: CHANGELOG.md

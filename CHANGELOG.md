@@ -4,6 +4,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) /
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Sync protocol
 bumps are called out — mismatched clients ignore each other's messages.
 
+## [0.40.2] - 2026-11-10
+
+### Changed
+- WoW Forever: Salvation, Light and Sanctuary are no longer planned, offered or
+  requested, pets are no longer buffed, and texts show the one-hour durations.
+
+### Fixed
+- Plan broadcasts and greetings in big groups no longer lose messages on WoW Forever.
+- Two paladins editing the same row at once no longer end up seeing different plans.
+- A late, older update no longer undoes a newer change.
+- Two players with the legacy broadcast on no longer re-send to each other endlessly.
+- Legacy clients receive overrides of paladins without class assignments.
+- The raid auto-plan gives every paladin a blessing on WoW Forever.
+- Right-click casts the greater version of the class blessing, never of a member's extra one.
+- Commands and the "+" column accept a first name with surname.
+- Removing a spec tag reaches the other paladins.
+- Sync keeps working where the game hides other players' data.
+
 ## [0.40.1] - 2026-11-10
 
 ### Fixed

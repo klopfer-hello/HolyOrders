@@ -74,91 +74,126 @@ local function Channel()
 	return nil
 end
 
--- low-level rate limiter: classic clients silently drop addon-message bursts,
--- so a token bucket paces us and a FIFO queue (drained by a ticker) preserves
--- order once anything is queued
+-- low-level rate limiter: the server drops (classic client) or refuses (modern
+-- client) addon-message bursts, per prefix. A token bucket paces each prefix
+-- and a FIFO queue (drained by a ticker) preserves order once anything is
+-- queued. The modern client allows a burst of 10 and then about one message
+-- per second, and says so when it refuses one: a refused message goes back to
+-- the head of the queue and is retried, so nothing is lost.
 local BURST = 8 -- bucket capacity
-local REFILL = 4 -- tokens per second
-local tokens = BURST
-local lastRefill = nil
-local sendQueue = {} -- FIFO of { wire, channel, target, msgType }
-local drainTicker = nil
+local REFILL = HO.Compat.HAS_TALENT_TABS and 4 or 1 -- tokens per second
+local REFUSED_BACKOFF = 1.5 -- seconds without sending after the client refused a message
 
-local function ChannelAlive(channel, target)
-	if channel == "WHISPER" then
-		return target ~= nil
-	elseif channel == "RAID" then
-		return IsInRaid()
-	elseif channel == "PARTY" then
-		return IsInGroup()
-	end
-	return true
-end
+-- an independent paced sender for one addon-message prefix:
+-- Send(wire, channel, target, msgType), Cancel(msgType)
+function Comm.NewOutbox(prefix)
+	local tokens = BURST
+	local lastRefill = nil
+	local holdUntil = 0
+	local queue = {} -- FIFO of { wire, channel, target, msgType }
+	local ticker = nil
 
-local function Refill()
-	local now = GetTime()
-	if not lastRefill then
-		lastRefill = now
-		return
-	end
-	local elapsed = now - lastRefill
-	if elapsed > 0 then
-		tokens = math.min(BURST, tokens + elapsed * REFILL)
-		lastRefill = now
-	end
-end
-
-local function DrainTick()
-	Refill()
-	-- comms locked (restricted content): hold the queue, the ticker retries
-	if HO.Compat.AddonCommsLocked() then
-		return
-	end
-	while sendQueue[1] and tokens >= 1 do
-		local item = table.remove(sendQueue, 1)
-		if ChannelAlive(item.channel, item.target) then
-			tokens = tokens - 1
-			C_ChatInfo.SendAddonMessage(PREFIX, item.wire, item.channel, item.target)
-		else
-			HO.Log("comm", "dropped queued " .. tostring(item.msgType) .. " (channel gone)")
+	local function ChannelAlive(channel, target)
+		if channel == "WHISPER" then
+			return target ~= nil
+		elseif channel == "RAID" then
+			return IsInRaid()
+		elseif channel == "PARTY" then
+			return IsInGroup()
 		end
+		return true
 	end
-	if not sendQueue[1] and drainTicker then
-		drainTicker:Cancel()
-		drainTicker = nil
-	end
-end
 
-local function Throttle(wire, channel, target, msgType)
-	-- once anything is queued everything queues behind it, so order never breaks
-	if #sendQueue == 0 and not HO.Compat.AddonCommsLocked() then
-		Refill()
-		if tokens >= 1 then
-			if ChannelAlive(channel, target) then
-				tokens = tokens - 1
-				C_ChatInfo.SendAddonMessage(PREFIX, wire, channel, target)
-			end
+	local function Refill()
+		local now = GetTime()
+		if not lastRefill then
+			lastRefill = now
 			return
 		end
-	end
-	sendQueue[#sendQueue + 1] = { wire = wire, channel = channel, target = target, msgType = msgType }
-	if not drainTicker then
-		drainTicker = C_Timer.NewTicker(1 / REFILL, DrainTick)
-	end
-end
-
--- drop still-queued outgoing messages of a type (used when a snapshot
--- supersedes pre-snapshot single-message edits)
-local function CancelQueued(msgType)
-	local i = 1
-	while sendQueue[i] do
-		if sendQueue[i].msgType == msgType then
-			table.remove(sendQueue, i)
-		else
-			i = i + 1
+		local elapsed = now - lastRefill
+		if elapsed > 0 then
+			tokens = math.min(BURST, tokens + elapsed * REFILL)
+			lastRefill = now
 		end
 	end
+
+	-- hands one message to the client; false when the client refused it for
+	-- sending too fast (it must be retried later)
+	local function Deliver(item)
+		tokens = tokens - 1
+		local result = C_ChatInfo.SendAddonMessage(prefix, item.wire, item.channel, item.target)
+		if HO.Compat.AddonMessageRefused(result) then
+			tokens = 0
+			holdUntil = GetTime() + REFUSED_BACKOFF
+			return false
+		end
+		return true
+	end
+
+	local function Blocked()
+		-- comms locked (restricted content) or backing off after a refusal
+		return HO.Compat.AddonCommsLocked() or GetTime() < holdUntil
+	end
+
+	local function DrainTick()
+		Refill()
+		if Blocked() then
+			return -- hold the queue, the ticker retries
+		end
+		while queue[1] and tokens >= 1 do
+			local item = queue[1]
+			if not ChannelAlive(item.channel, item.target) then
+				table.remove(queue, 1)
+				HO.Log("comm", "dropped queued " .. tostring(item.msgType) .. " (channel gone)")
+			elseif Deliver(item) then
+				table.remove(queue, 1)
+			else
+				break -- refused: it stays at the head for the next tick
+			end
+		end
+		if not queue[1] and ticker then
+			ticker:Cancel()
+			ticker = nil
+		end
+	end
+
+	local outbox = {}
+
+	function outbox.Send(wire, channel, target, msgType)
+		local item = { wire = wire, channel = channel, target = target, msgType = msgType }
+		-- once anything is queued everything queues behind it, so order never breaks
+		if #queue == 0 and not Blocked() then
+			Refill()
+			if tokens >= 1 then
+				if not ChannelAlive(channel, target) or Deliver(item) then
+					return
+				end
+			end
+		end
+		queue[#queue + 1] = item
+		if not ticker then
+			ticker = C_Timer.NewTicker(1 / REFILL, DrainTick)
+		end
+	end
+
+	-- drop still-queued outgoing messages of a type (used when a snapshot
+	-- supersedes pre-snapshot single-message edits)
+	function outbox.Cancel(msgType)
+		local i = 1
+		while queue[i] do
+			if queue[i].msgType == msgType then
+				table.remove(queue, i)
+			else
+				i = i + 1
+			end
+		end
+	end
+
+	return outbox
 end
+
+local outbox = Comm.NewOutbox(PREFIX)
+local Throttle, CancelQueued = outbox.Send, outbox.Cancel
 
 -- transparent fragmentation: a message whose wire would exceed MAX_MSG is split
 -- into "PROTO:FG:k:<chunk>" fragments (k = B first, C middle, E last), enqueued

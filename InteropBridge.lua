@@ -75,14 +75,15 @@ local function GroupChannel()
 	return nil
 end
 
+-- paced like our own protocol (the server limits every prefix separately): a
+-- big raid's push is dozens of messages, and an unpaced burst loses the tail
+local outbox = HO.Comm.NewOutbox(WIRE_PREFIX)
+
 local function Emit(msg, channel, target)
-	if not C_ChatInfo or not C_ChatInfo.SendAddonMessage then
-		return
-	end
 	if HO.db and HO.db.options.trace then
 		HO.Log("interop", (channel or "?") .. (target and ("/" .. target) or "") .. " " .. msg:sub(1, 120))
 	end
-	C_ChatInfo.SendAddonMessage(WIRE_PREFIX, msg, channel, target)
+	outbox.Send(msg, channel, target, msg:match("^(%S+)"))
 end
 
 -- encoding --------------------------------------------------------------------

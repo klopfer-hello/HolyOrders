@@ -390,3 +390,15 @@ function Compat.AddonCommsLocked()
 	local ok, locked = pcall(check)
 	return ok and locked == true
 end
+
+-- did the client refuse an outgoing addon message for sending too fast (or
+-- while comms are locked)? Such a message was not sent and must be retried.
+-- The modern client returns a result code; where it does not, nothing is known.
+function Compat.AddonMessageRefused(result)
+	local codes = Enum and Enum.SendAddonMessageResult
+	if not codes or type(result) ~= "number" then
+		return false
+	end
+	return result == codes.AddonMessageThrottle or result == codes.ChannelThrottle
+		or result == codes.AddOnMessageLockdown
+end

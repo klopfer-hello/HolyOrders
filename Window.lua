@@ -27,6 +27,7 @@ local ICON_SIZE = 24 -- cell icon size (rows grow with it so icons don't overflo
 local PREF_ICON = 16
 local PREF_STEP = 18
 local MAX_ROW_PREFS = 3
+local SALVATION = 4 -- blessing id
 
 local CLASS_ORDER = { "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST", "SHAMAN", "MAGE", "WARLOCK", "DRUID" }
 -- cast-mode tag shown on a cell: A auto, G great (greater), S small (10-min
@@ -326,14 +327,16 @@ local function CellTooltip(cell)
 					useGreater = (n >= min)
 				end
 				local effective = useGreater
-					and L["greater (30 min, whole class, 1 Symbol of Kings)"]
-					or L["10-min singles (too few members for greater)"]
+					and string.format(L["greater (%d min, whole class, 1 Symbol of Kings)"], HO.Compat.GREATER_MINUTES)
+					or string.format(L["%d-min singles (too few members for greater)"], HO.Compat.SINGLE_MINUTES)
 				GameTooltip:AddLine(string.format(L["mode: auto — greater from %d+ members, singles otherwise"], min), 0.9, 0.9, 0.9, true)
 				GameTooltip:AddLine(string.format(L["with %d member(s) now: %s"], n, effective), 0.6, 1, 0.6, true)
 			elseif cur.mode == "greater" then
-				GameTooltip:AddLine(L["mode: greater — always the Greater Blessing: 30 min, hits the whole class, costs a Symbol of Kings per cast"], 0.9, 0.9, 0.9, true)
+				GameTooltip:AddLine(string.format(L["mode: greater — always the Greater Blessing: %d min, hits the whole class, costs a Symbol of Kings per cast"],
+					HO.Compat.GREATER_MINUTES), 0.9, 0.9, 0.9, true)
 			else
-				GameTooltip:AddLine(L["mode: normal — always 10-min single blessings on each member, no reagent"], 0.9, 0.9, 0.9, true)
+				GameTooltip:AddLine(string.format(L["mode: normal — always %d-min single blessings on each member, no reagent"],
+					HO.Compat.SINGLE_MINUTES), 0.9, 0.9, 0.9, true)
 			end
 		else
 			GameTooltip:AddLine(cell.pally .. ": " .. L["no assignment"], 1, 1, 1)
@@ -877,13 +880,15 @@ function Window.Refresh()
 		-- German localization deliberately uses action labels instead
 		local active = HO.Plan.NoSalvationActive() or HO.db.noSalvBy
 		win.salvBtn:SetText(active and ("|cffff4040" .. L["No-Salv ON"] .. "|r") or L["No-Salv OFF"])
+		-- no button where the game has no Salvation at all
+		win.salvBtn:SetShown(active or not HO.Data.IsRemoved(SALVATION))
 	end
 	-- four short plain-language lines: icon clicks, name clicks (spec/tank),
 	-- then what the three cast-mode letters on the icons mean
 	win.hint:SetText(L["Click an icon = pick a blessing · right-click = remove · class name = show members"] .. "\n"
 		.. L["Click a member's name = change their spec/role · right-click the name = mark as tank"] .. "\n"
 		.. L["Shift-click an icon changes how it is cast:"] .. "\n"
-		.. string.format(L["|cff40c0ffA|r automatic: big from %d members, small otherwise — |cffffd100G|r always big (whole class, 1 Symbol) — |cff40ff40S|r always small (10 min each)"], HO.db.options.greaterMin or 2))
+		.. string.format(L["|cff40c0ffA|r automatic: big from %d members, small otherwise — |cffffd100G|r always big (whole class, 1 Symbol) — |cff40ff40S|r always small (%d min each)"], HO.db.options.greaterMin or 2, HO.Compat.SINGLE_MINUTES))
 
 	-- column headers (paladin short names): clickable — click one name, then
 	-- another, to swap the two paladins' complete assignments (lane swap)

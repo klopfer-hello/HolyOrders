@@ -127,10 +127,13 @@ local function Available(pallyName, blessingID)
 	if peer and peer.caps and peer.caps[blessingID] then
 		return peer.caps[blessingID].known
 	end
-	-- no HolyOrders on that paladin: assume everything but talent-gated
-	-- Sanctuary. Exception: a paladin tagged protection (manually, synced or
-	-- inspect-inferred) is exactly the build that has Sanctuary — unlock it, so
-	-- it stays assignable to addon-less protection paladins.
+	-- no HolyOrders on that paladin: assume everything the game still has but
+	-- talent-gated Sanctuary. Exception: a paladin tagged protection (manually,
+	-- synced or inspect-inferred) is exactly the build that has Sanctuary —
+	-- unlock it, so it stays assignable to addon-less protection paladins.
+	if HO.Data.IsRemoved(blessingID) then
+		return false
+	end
 	if blessingID ~= SANCTUARY then
 		return true
 	end
@@ -325,9 +328,14 @@ local function RunCore(pallys)
 		-- via the step-4 request pass.
 		assigned[pallys[1]] = SALVATION
 	elseif isRaid and not solo then
-		local used = {}
-		for i = 1, math.min(#pallys, #RAID_COVERAGE) do
-			local blessing = RAID_COVERAGE[i]
+		-- walk the whole priority list until every paladin has a blessing: one
+		-- nobody can cast (not talented, or gone from the game) is skipped, it
+		-- must not use up a paladin's turn
+		local used, free = {}, #pallys
+		for _, blessing in ipairs(RAID_COVERAGE) do
+			if free == 0 then
+				break
+			end
 			local best, bestScore
 			for _, pally in ipairs(pallys) do -- sorted; strict > keeps ties alphabetical
 				if not used[pally] and Available(pally, blessing) then
@@ -339,6 +347,7 @@ local function RunCore(pallys)
 			end
 			if best then
 				used[best] = true
+				free = free - 1
 				assigned[best] = blessing
 			end
 		end

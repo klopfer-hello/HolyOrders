@@ -163,8 +163,8 @@ HO.commands["assign"] = function(rest)
 	local classToken, id, mode = rest:match("^(%S+)%s+(%S+)%s*(%S*)$")
 	classToken = classToken and classToken:upper()
 	id = tonumber(id)
-	if not classToken or not CLASS_TOKENS[classToken] or not id or not (id == 0 or HO.Data.blessings[id]) then
-		HO.Print("usage: /ho assign <class> <blessing 0-" .. HO.Data.NUM_BLESSINGS .. "> [auto|greater|normal]")
+	if not classToken or not CLASS_TOKENS[classToken] or not id or not (id == 0 or not HO.Data.IsRemoved(id)) then
+		HO.Print("usage: /ho assign <class> <blessing 0-" .. #HO.Data.ExistingBlessings() .. "> [auto|greater|normal]")
 		HO.Print("example: /ho assign WARRIOR 2  (0 clears)")
 		return
 	end
@@ -178,10 +178,10 @@ HO.commands["assign"] = function(rest)
 end
 
 HO.commands["override"] = function(rest)
-	local target, id = rest:match("^(%S+)%s+(%S+)$")
+	local target, id = rest:match("^%s*(.-)%s+(%S+)%s*$") -- the name may have a surname
 	id = tonumber(id)
-	if not target or not id or not (id == 0 or HO.Data.blessings[id]) then
-		HO.Print("usage: /ho override <playerName> <blessing 0-" .. HO.Data.NUM_BLESSINGS .. ">  (0 clears)")
+	if not target or target == "" or not id or not (id == 0 or not HO.Data.IsRemoved(id)) then
+		HO.Print("usage: /ho override <playerName> <blessing 0-" .. #HO.Data.ExistingBlessings() .. ">  (0 clears)")
 		return
 	end
 	local entry
@@ -511,6 +511,10 @@ end
 -- paladin's addon version — an off-script client (older addon, or none) is
 -- immediately identifiable, since every client computes its own pet duty.
 HO.commands["pets"] = function()
+	if not HO.Compat.PETS_BUFFABLE then
+		HO.Print("pets cannot be blessed in this version of the game")
+		return
+	end
 	local found = false
 	local mine = HO.FullName("player")
 	for _, entry in ipairs(HO.Roster.units) do
@@ -763,10 +767,11 @@ HO.commands["request"] = function(rest)
 	-- resolve by number (= blessing id) or case-insensitive name prefix
 	local id
 	local num = tonumber(arg)
-	if num and HO.Data.blessings[num] then
+	if num and not HO.Data.IsRemoved(num) then
 		id = num
 	else
-		for bid, blessing in ipairs(HO.Data.blessings) do
+		for _, bid in ipairs(HO.Data.ExistingBlessings()) do
+			local blessing = HO.Data.blessings[bid]
 			local name = blessing.name or blessing.key
 			if name and name:lower():sub(1, #lower) == lower then
 				id = bid
@@ -775,7 +780,7 @@ HO.commands["request"] = function(rest)
 		end
 	end
 	if not id then
-		HO.Print("no blessing matches '" .. arg .. "' — use a name or 1-" .. HO.Data.NUM_BLESSINGS .. " (or 'clear')")
+		HO.Print("no blessing matches '" .. arg .. "' — use a name or 1-" .. #HO.Data.ExistingBlessings() .. " (or 'clear')")
 		return
 	end
 	-- append to the current priority list (the request window reorders/removes);

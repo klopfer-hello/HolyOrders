@@ -92,6 +92,9 @@ For WoW Classic TBC Anniversary (interface 2.5.6) and WoW Forever (interface
 every paladin to run a compatible version; the addon announces in chat when
 someone in the group is out of date.
 
+WoW Forever has no Blessing of Salvation, Light or Sanctuary, and pets cannot
+be blessed there: the Salvation features and the pet options only show on TBC.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

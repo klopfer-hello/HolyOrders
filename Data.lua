@@ -18,6 +18,28 @@ Data.blessings = {
 }
 Data.NUM_BLESSINGS = #Data.blessings
 
+-- A blessing this client's game no longer has stays in the list (its id is
+-- fixed in stored plans and on the wire) but is never planned, offered or
+-- requested. Knowing it after all (the spellbook has it) overrules the list.
+function Data.IsRemoved(blessingID)
+	local blessing = Data.blessings[blessingID]
+	if not blessing then
+		return true
+	end
+	return (HO.Compat.REMOVED_BLESSINGS[blessing.key] and not blessing.known) or false
+end
+
+-- ids of the blessings that exist in this client's game, in id order
+function Data.ExistingBlessings()
+	local ids = {}
+	for id in ipairs(Data.blessings) do
+		if not Data.IsRemoved(id) then
+			ids[#ids + 1] = id
+		end
+	end
+	return ids
+end
+
 -- stable aura IDs (used in SavedVariables and comm; never renumber). Each maps
 -- to a representative base spell whose localized name and icon we resolve from
 -- the running client, so no localized aura name is ever hardcoded. Auras have

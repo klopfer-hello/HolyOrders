@@ -64,6 +64,11 @@ local function DirValues(dirs)
 	return values, sorting
 end
 
+-- the pet options make no sense where pets cannot be blessed
+local function NoPets()
+	return not HO.Compat.PETS_BUFFABLE
+end
+
 local function PetValues()
 	local values, sorting = {}, {}
 	for _, id in ipairs(PET_CYCLE) do
@@ -231,7 +236,8 @@ local function BuildOptionsTable()
 					head = { type = "header", name = L["Blessings & pets"], order = 0 },
 					greaterSingle = {
 						type = "toggle", name = L["Prefer greater blessings even for single members"], order = 1, width = "full",
-						desc = L["Casts the big 30-minute blessing even when only one member of a class is present. Costs a Symbol of Kings per cast."],
+						desc = string.format(L["Casts the big %d-minute blessing even when only one member of a class is present. Costs a Symbol of Kings per cast."],
+							HO.Compat.GREATER_MINUTES),
 						get = function() return Options.Ensure().greaterMin == 1 end,
 						set = function(_, v)
 							Options.Ensure().greaterMin = v and 1 or 2
@@ -239,6 +245,7 @@ local function BuildOptionsTable()
 						end,
 					},
 					hunterPets = {
+						hidden = NoPets,
 						type = "toggle", name = L["Buff hunter pets"], order = 2, width = "full",
 						desc = L["Includes hunter pets in planning and casting."],
 						get = function() return Options.Ensure().pets.hunter ~= false end,
@@ -248,6 +255,7 @@ local function BuildOptionsTable()
 						end,
 					},
 					warlockPets = {
+						hidden = NoPets,
 						type = "toggle", name = L["Buff warlock pets"], order = 3, width = "full",
 						desc = L["Includes warlock demons in planning and casting."],
 						get = function() return Options.Ensure().pets.warlock == true end,
@@ -257,6 +265,7 @@ local function BuildOptionsTable()
 						end,
 					},
 					petBlessing = {
+						hidden = NoPets,
 						type = "select", name = L["Pet blessing"], order = 4,
 						desc = L["The first blessing pets receive. When several paladins cover the owner's class, they stack further blessings on the pet: Kings, and Wisdom on mana pets."],
 						values = PetValues, sorting = function()

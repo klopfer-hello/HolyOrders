@@ -64,6 +64,11 @@ local function ToggleBlessing(id)
 	Apply(list)
 end
 
+-- the blessings a member can ask for: all that exist in this client's game
+function Request.Offered()
+	return HO.Data.ExistingBlessings()
+end
+
 local function CreateBlessingButton(id)
 	local btn = CreateFrame("Button", nil, frame)
 	btn:SetSize(BTN_SIZE, BTN_SIZE)
@@ -157,12 +162,13 @@ local function Create()
 	HO.Skin.CloseButton(close)
 	close:SetScript("OnClick", function() frame:Hide() end)
 
-	local n = HO.Data.NUM_BLESSINGS
+	local offered = Request.Offered()
+	local n = #offered
 	local rowY = -(8 + TITLE_H + 6)
-	-- one button per blessing in id order (all six shown; a requester may want any)
-	for id = 1, n do
+	-- one button per existing blessing in id order (a requester may want any)
+	for i, id in ipairs(offered) do
 		local btn = CreateBlessingButton(id)
-		btn:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD + (id - 1) * (BTN_SIZE + BTN_GAP), rowY)
+		btn:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD + (i - 1) * (BTN_SIZE + BTN_GAP), rowY)
 		blessingButtons[id] = btn
 	end
 
@@ -218,7 +224,7 @@ function Request.Refresh()
 			rankOf[id] = i
 		end
 	end
-	for id, btn in ipairs(blessingButtons) do
+	for id, btn in pairs(blessingButtons) do
 		local b = HO.Data.blessings[id]
 		btn.icon:SetTexture((b and b.icon) or QUESTION_ICON)
 		local rank = rankOf[id]

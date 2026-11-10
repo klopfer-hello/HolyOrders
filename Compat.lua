@@ -15,6 +15,22 @@ local MAX_BUFFS = 40
 -- live on the trait system and tab-based inspection cannot work
 Compat.HAS_TALENT_TABS = GetNumTalentTabs ~= nil
 
+-- game rules that differ on the modern-engine vanilla client -----------------------
+
+-- blessings can be cast on hunter and warlock pets only on the classic client
+Compat.PETS_BUFFABLE = Compat.HAS_TALENT_TABS
+
+-- blessings the modern-engine vanilla client removed from the game (by key)
+Compat.REMOVED_BLESSINGS = Compat.HAS_TALENT_TABS and {}
+	or { SALVATION = true, LIGHT = true, SANCTUARY = true }
+
+-- how long a single and a Greater blessing last, in minutes (for the texts)
+Compat.SINGLE_MINUTES = Compat.HAS_TALENT_TABS and 10 or 60
+Compat.GREATER_MINUTES = Compat.HAS_TALENT_TABS and 30 or 60
+
+-- characters have a first name and a surname on the modern-engine vanilla client
+Compat.HAS_SURNAMES = not Compat.HAS_TALENT_TABS
+
 -- spells ------------------------------------------------------------------------
 
 -- localized name and icon of a spell ID (nil when the client lacks the spell)

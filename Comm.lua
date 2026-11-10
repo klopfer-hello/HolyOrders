@@ -1293,7 +1293,7 @@ local function NormalizeRequests(ids)
 	if type(ids) == "table" then
 		for _, id in ipairs(ids) do
 			id = tonumber(id)
-			if id and id ~= 0 and HO.Data.blessings[id] and not seen[id] and #out < Comm.REQUEST_MAX then
+			if id and id ~= 0 and not HO.Data.IsRemoved(id) and not seen[id] and #out < Comm.REQUEST_MAX then
 				seen[id] = true
 				out[#out + 1] = id
 			end

@@ -4,6 +4,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) /
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Sync protocol
 bumps are called out — mismatched clients ignore each other's messages.
 
+## [0.40.1] - 2026-11-10
+
+### Fixed
+- Paladins in a WoW Forever group sync their assignments again (no more
+  "No player named ... is currently playing" lines).
+- `/ho expect` accepts a first name with surname on WoW Forever.
+- Dragging the bar handle in combat no longer reports a blocked action.
+
 ## [0.40.0] - 2026-10-04
 
 ### Added

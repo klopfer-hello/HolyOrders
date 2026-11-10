@@ -595,6 +595,8 @@ end
 
 -- spec-tag overlay: share a member's tag so every client computes the same
 -- tank set (divergent local inspect results otherwise split the Salvation plan)
+Comm.SPEC_CLEARED = "none" -- wire tag for "this member's tag was removed"
+
 function Comm.SendSpecTag(name, tag)
 	if not me or not name or not tag or tag == "" then
 		return
@@ -909,6 +911,9 @@ end
 
 handlers["F"] = function(sender, payload)
 	if ApplyRow(payload, sender) then
+		if strsplit(";", payload) == sender then
+			HO.Plan.OnOwnerRow(sender) -- a pre-planned arrival may need its lane back
+		end
 		RefreshUI()
 	end
 end
@@ -1185,6 +1190,9 @@ handlers["ST"] = function(sender, payload)
 	local name, tag = strsplit(";", payload)
 	if not name or not tag or tag == "" then
 		return
+	end
+	if tag == Comm.SPEC_CLEARED then
+		tag = nil -- removed on the sender's side: forget the shared tag as well
 	end
 	if Comm.specSync[name] ~= tag then
 		Comm.specSync[name] = tag

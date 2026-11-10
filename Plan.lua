@@ -404,6 +404,33 @@ end
 -- list only adds window columns and drives the arrival handling below.
 
 local ARRIVAL_REASSERT_DELAY = 6 -- seconds; an arriving client has announced its own row by then
+local ARRIVAL_WINDOW = 300 -- seconds an arrival's own announcements are still corrected
+local ARRIVAL_SETTLE = 1 -- seconds after such an announcement until the pre-plan is put back
+
+-- pre-planned paladins who arrived a moment ago: [name] = { apply, matches, t }.
+-- Their own row can arrive long after the timed passes below (messages may
+-- take a minute), so every row they announce inside the window is checked too.
+local arrivals = {}
+
+-- called by the sync layer whenever a paladin's own row was taken over
+function Plan.OnOwnerRow(owner)
+	local arrival = arrivals[owner]
+	if not arrival then
+		return
+	end
+	if GetTime() - arrival.t > ARRIVAL_WINDOW then
+		arrivals[owner] = nil
+		return
+	end
+	if arrival.matches() then
+		return
+	end
+	C_Timer.After(ARRIVAL_SETTLE, function()
+		if not arrival.matches() and arrival.apply() then
+			HO.Announce("pre-planned assignments re-applied for " .. owner .. " (their own announcement had replaced them)")
+		end
+	end)
+end
 
 -- expected paladins who are still absent, sorted (window columns)
 function Plan.Expected()
@@ -555,6 +582,7 @@ local function HandleArrivals()
 					end
 					return true
 				end
+				arrivals[real] = { apply = ApplyCaptured, matches = Matches, t = GetTime() }
 				C_Timer.After(ARRIVAL_REASSERT_DELAY, function()
 					if not ApplyCaptured() then
 						return

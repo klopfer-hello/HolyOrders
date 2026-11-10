@@ -1106,8 +1106,8 @@ function Window.Refresh()
 									-- cycling back to none returns it to auto-inference
 									HO.db.specManual = HO.db.specManual or {}
 									HO.db.specManual[entry.name] = nextSpec and true or nil
-									if HO.Comm and HO.Comm.SendSpecTag and nextSpec then
-										HO.Comm.SendSpecTag(entry.name, nextSpec)
+									if HO.Comm and HO.Comm.SendSpecTag then
+										HO.Comm.SendSpecTag(entry.name, nextSpec or HO.Comm.SPEC_CLEARED)
 									end
 								end
 							end

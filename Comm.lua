@@ -333,9 +333,14 @@ local function ValidRev(x)
 	return x
 end
 
+-- who authored the revision we hold of each row (session only): decides
+-- which of two same-revision edits wins, see ResolveStale
+local revAuthor = {}
+
 local function BumpRev(owner)
 	local revs = Revs(HO.Plan.Active())
 	revs[owner] = (revs[owner] or 0) + 1
+	revAuthor[owner] = me
 	return revs[owner]
 end
 
@@ -373,6 +378,101 @@ local function SerializeRow(owner)
 		.. table.concat(classParts, "|") .. ";" .. table.concat(ovParts, "|")
 end
 
+-- conflicts --------------------------------------------------------------------
+-- Two clients can edit the same row before they see each other's edit: both
+-- then hold the same revision with different content, and each ignores the
+-- other's message as "not newer". Left alone, the clients show different
+-- plans from then on. The row's owner settles it; for a row whose owner runs
+-- no HolyOrders, the alphabetically later editor does.
+
+local REASSERT_DELAY = 1.0 -- seconds; coalesces a burst of conflicting edits
+local reassertTimer
+local rebroadcastTimers = {}
+
+-- my own row is mine to decide: when someone's edit of it could not be applied
+-- as sent (made against an older state, at the same time as my own edit, or
+-- without permission), announce the row again above their revision, so every
+-- client drops its diverged copy
+local function ReassertOwnRow(theirRev)
+	local revs = Revs(HO.Plan.Active())
+	if theirRev and theirRev > (revs[me] or 0) then
+		revs[me] = theirRev
+	end
+	if reassertTimer then
+		return
+	end
+	reassertTimer = C_Timer.NewTimer(REASSERT_DELAY, function()
+		reassertTimer = nil
+		Comm.BroadcastOwnRow()
+	end)
+end
+
+-- announce a row I edited again, one revision up, so my version replaces the
+-- same-revision edit of someone else on every client
+local function RebroadcastRow(owner)
+	if rebroadcastTimers[owner] then
+		return
+	end
+	rebroadcastTimers[owner] = C_Timer.NewTimer(REASSERT_DELAY, function()
+		rebroadcastTimers[owner] = nil
+		if not me or not Comm.CanEdit(me, owner) then
+			return
+		end
+		BumpRev(owner)
+		Comm.SendRow(owner)
+	end)
+end
+
+-- an edit from someone other than the row's owner that is NOT newer than what
+-- we hold. Returns true when it has to be applied all the same.
+local function ResolveStale(sender, owner, rev, localRev)
+	if owner == me then
+		-- same revision: made while my own edit was under way, so take theirs
+		-- too; either way everyone gets the resulting row from me
+		ReassertOwnRow(rev)
+		return rev == localRev
+	end
+	if rev ~= localRev or Comm.peers[owner] then
+		return false -- plain old news, or the owner's client settles it
+	end
+	local author = revAuthor[owner]
+	if not author or author == sender then
+		return false
+	end
+	if sender > author then
+		return true -- the later name wins, on every client alike
+	end
+	if author == me then
+		RebroadcastRow(owner) -- I win: make sure their client learns it
+	end
+	return false
+end
+
+-- A row from its owner is the truth and normally applies whatever its
+-- revision. But one that is OLDER than what we hold may just have been under
+-- way while a newer edit reached us (messages can take a long time): applying
+-- it would bring the old state back on this client only. So the first such row
+-- is held back and the owner is asked for the current one; if that is still
+-- older, the owner really never got the newer edit, and their row applies.
+local OWNER_RECHECK_WINDOW = 300 -- seconds
+local ownerAsked = {} -- [owner] = GetTime() of the question
+
+local function HoldOlderOwnerRow(owner, rev, localRev)
+	if rev >= localRev then
+		ownerAsked[owner] = nil
+		return false
+	end
+	local asked = ownerAsked[owner]
+	if asked and GetTime() - asked < OWNER_RECHECK_WINDOW then
+		ownerAsked[owner] = nil
+		return false -- asked already: this is their answer
+	end
+	ownerAsked[owner] = GetTime()
+	HO.Log("comm", "older row from " .. owner .. " (rev " .. rev .. " < " .. localRev .. ") held, asking again")
+	Comm.AskRow(owner)
+	return true
+end
+
 -- applies a serialized row if permitted and newer; direct table writes only
 -- (never through Plan.Set*, which would echo back into Comm).
 -- force = true is used by the PLANAPPLY snapshot: bulk permission is already
@@ -389,15 +489,22 @@ local function ApplyRow(payload, sender, force)
 	end
 	if not force and not Comm.CanEdit(sender, owner) then
 		HO.Log("comm", "rejected row for " .. owner .. " from " .. sender)
+		if owner == me then
+			ReassertOwnRow(rev)
+		end
 		return
 	end
 	local plan = HO.Plan.Active()
 	local localRev = Revs(plan)[owner] or 0
 	if not force then
-		-- the owner is authoritative for their own row: accept it unconditionally
-		-- and adopt its rev as sent (heals an editor who forked a foreign row via
-		-- a lost send). Everyone else needs a strictly newer revision.
-		if sender ~= owner and rev <= localRev then
+		-- the owner is authoritative for their own row: it applies and its rev is
+		-- adopted as sent (heals an editor who forked a foreign row via a lost
+		-- send). Everyone else needs a strictly newer revision.
+		if sender == owner then
+			if HoldOlderOwnerRow(owner, rev, localRev) then
+				return
+			end
+		elseif rev <= localRev and not ResolveStale(sender, owner, rev, localRev) then
 			return
 		end
 	end
@@ -423,6 +530,7 @@ local function ApplyRow(payload, sender, force)
 	plan.class[owner] = class
 	plan.player[owner] = player
 	Revs(plan)[owner] = rev
+	revAuthor[owner] = sender
 	return true
 end
 
@@ -463,6 +571,16 @@ end
 
 function Comm.SendFull(target)
 	Send("F:" .. SerializeRow(me), target and "WHISPER" or nil, target)
+end
+
+-- any row as we hold it, to the group (receivers gate it like every edit)
+function Comm.SendRow(owner)
+	Send("F:" .. SerializeRow(owner))
+end
+
+-- ask one paladin for their current row (answered by whisper)
+function Comm.AskRow(owner)
+	Send("R:", "WHISPER", owner)
 end
 
 -- bump and broadcast only the player's own row (always permitted).
@@ -809,6 +927,9 @@ handlers["SC"] = function(sender, payload)
 		return
 	end
 	if not Comm.CanEdit(sender, owner) then
+		if owner == me then
+			ReassertOwnRow(rev)
+		end
 		return
 	end
 	local plan = HO.Plan.Active()
@@ -818,7 +939,7 @@ handlers["SC"] = function(sender, payload)
 		if rev < localRev then
 			return
 		end
-	elseif rev <= localRev then
+	elseif rev <= localRev and not ResolveStale(sender, owner, rev, localRev) then
 		return
 	end
 	plan.class[owner] = plan.class[owner] or {}
@@ -828,6 +949,7 @@ handlers["SC"] = function(sender, payload)
 		plan.class[owner][classToken] = { id = id, mode = mode or "auto" }
 	end
 	Revs(plan)[owner] = rev
+	revAuthor[owner] = sender
 	RefreshUI()
 end
 
@@ -843,6 +965,9 @@ handlers["SP"] = function(sender, payload)
 		return
 	end
 	if not Comm.CanEdit(sender, owner) then
+		if owner == me then
+			ReassertOwnRow(rev)
+		end
 		return
 	end
 	local plan = HO.Plan.Active()
@@ -852,12 +977,13 @@ handlers["SP"] = function(sender, payload)
 		if rev < localRev then
 			return
 		end
-	elseif rev <= localRev then
+	elseif rev <= localRev and not ResolveStale(sender, owner, rev, localRev) then
 		return
 	end
 	plan.player[owner] = plan.player[owner] or {}
 	plan.player[owner][target] = (id ~= 0) and id or nil
 	Revs(plan)[owner] = rev
+	revAuthor[owner] = sender
 	RefreshUI()
 end
 

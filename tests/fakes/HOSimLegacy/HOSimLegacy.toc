@@ -1,0 +1,3 @@
+## Interface: 16001
+## Title: HolyOrders sim: legacy blessing-addon wire recorder (tests only)
+Legacy.lua

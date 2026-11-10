@@ -1,0 +1,3 @@
+## Interface: 16001
+## Title: HolyOrders sim: classic-client mode (tests only)
+Mode.lua

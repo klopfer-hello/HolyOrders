@@ -269,6 +269,7 @@ function Engine.Update()
 					name = entry.name,
 					unit = entry.unit,
 					isPet = entry.isPet or nil,
+					isOverride = isOverride or nil,
 					owner = entry.owner,
 					blessingID = (blessingID and blessingID > 0) and blessingID or nil,
 					requestID = reqID,
@@ -406,6 +407,9 @@ function Engine.Update()
 			Engine.tasks[classToken] = {
 				classToken = classToken,
 				blessingID = nextItem.blessingID,
+				-- the class row's blessing (nil: the duty is overrides only); the
+				-- next target may be an override or pet with a different one
+				classBlessingID = assign and assign.id or nil,
 				spellName = castGreater and blessing.greaterName or blessing.name,
 				-- right-click alternative: always the 10-min single
 				singleSpellName = blessing.name,
@@ -428,6 +432,7 @@ function Engine.Update()
 			Engine.tasks[classToken] = {
 				classToken = classToken,
 				blessingID = displayID,
+				classBlessingID = assign and assign.id or nil,
 				spellName = nil,
 				unit = nil,
 				unitName = nil,

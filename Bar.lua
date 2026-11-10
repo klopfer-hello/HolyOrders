@@ -1557,10 +1557,6 @@ function Bar.Refresh()
 			-- any class member, so it also works as a re-buff when all are covered.
 			local rightSpell = task.singleSpellName or (blessing and blessing.name)
 			local rightIsGreater = false
-			if blessing and blessing.greaterKnown and blessing.greaterName and haveSymbols then
-				rightSpell = blessing.greaterName
-				rightIsGreater = true
-			end
 			local rightUnit = task.unit
 			if not rightUnit then
 				for _, m in ipairs(HO.Engine.ClassMembers(classToken)) do
@@ -1568,6 +1564,26 @@ function Bar.Refresh()
 						rightUnit = m.unit
 						break
 					end
+				end
+			end
+			-- the greater is always the CLASS row's blessing, cast on a member who
+			-- gets that blessing. The next target may be an override or a pet with
+			-- a different blessing: its greater would replace the class blessing
+			-- on everyone.
+			local classBlessing = task.classBlessingID and HO.Data.blessings[task.classBlessingID]
+			if classBlessing and classBlessing.greaterKnown and classBlessing.greaterName and haveSymbols then
+				local anchor
+				for _, m in ipairs(HO.Engine.ClassMembers(classToken)) do
+					if not m.isPet and not m.isOverride and m.unit then
+						anchor = anchor or m.unit
+						if m.unit == task.unit then
+							anchor = m.unit
+							break
+						end
+					end
+				end
+				if anchor then
+					rightSpell, rightIsGreater, rightUnit = classBlessing.greaterName, true, anchor
 				end
 			end
 			btn.rightSpell, btn.rightIsGreater = rightSpell, rightIsGreater
@@ -1587,7 +1603,7 @@ function Bar.Refresh()
 			--   pets), else their OWN assigned single (overrides may differ);
 			--   pets → by unit token (no reliable name targeting), with their own
 			--   single — skipped in greater mode, which reaches them anyway
-			local useGreater = blessing and blessing.greaterName and HO.Engine.WouldUseGreater(classToken)
+			local useGreater = classBlessing and classBlessing.greaterName and HO.Engine.WouldUseGreater(classToken)
 			local n = 0
 			for _, m in ipairs(HO.Engine.ClassMembers(classToken)) do
 				if n >= FLYOUT_MAX_ROWS then
@@ -1600,8 +1616,8 @@ function Bar.Refresh()
 						targetRef, targetSpell = m.unit, mb and mb.name
 					end
 				else
-					if useGreater then
-						targetRef, targetSpell = m.name, blessing.greaterName
+					if useGreater and not m.isOverride then
+						targetRef, targetSpell = m.name, classBlessing.greaterName
 					else
 						local mb = m.blessingID and HO.Data.blessings[m.blessingID]
 						targetRef, targetSpell = m.name, mb and mb.name
